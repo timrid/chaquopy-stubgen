@@ -1,0 +1,48 @@
+[build-system]
+requires = [
+    "setuptools>=64",
+    "wheel",
+    "setuptools-scm>=8"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chaquopy-stubgen"
+description = "PEP-484 python stub generator for Java classes accessed through Chaquopy on Android"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.13"
+keywords = [
+    "stubgenj",
+    "JPype",
+    "Python",
+    "Java",
+    "Chaquopy",
+    "Beeware",
+    "briefcase",
+    "Android",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "JPype1>=1.6.0,<2",
+]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "mypy>=0.931,<0.971",
+    "typing_extensions;python_version<'3.8'",
+]
+test = [
+    "pytest",
+]
+
+[tool.setuptools_scm]
+version_file = "src/chaquopy_stubgen/_version.py"
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules -p no:faulthandler"
