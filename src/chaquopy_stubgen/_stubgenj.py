@@ -748,7 +748,7 @@ def handle_implicit_conversions(
         else:
             type_name = str(typ)  # e.g. typing aliases
         
-        if type_name.startswith("jpype"):
+        if type_name.startswith("jpype") or type_name.startswith("_jpype"):
             continue  # ignore jpype specific types for chaquopy
 
         if type_name == "typing.Callable" and type_args is not None:
