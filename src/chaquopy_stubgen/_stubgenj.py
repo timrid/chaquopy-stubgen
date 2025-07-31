@@ -1,7 +1,9 @@
-"""stubgenj
-A PEP-484 python stub generator for Java modules using the JPype imports system. Originally based on mypy stubgenc.
+"""chaquopy-stubgen
+A PEP-484 python stub generator for Java modules using the Chaquopy import system.
+Originally based on mypy stubgenc and stubgenj.
 
 Copyright (c) CERN 2020-2021
+Copyright (c) Tim Riddemann 2025
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in
@@ -24,6 +26,7 @@ SOFTWARE.
 Authors:
     M. Hostettler   <michi.hostettler@cern.ch>
     P. Elson        <philip.elson@cern.ch>
+    T. Riddermann
 """
 
 import collections
@@ -31,12 +34,10 @@ import dataclasses
 import functools
 import pathlib
 import re
-import textwrap
 from typing import Any, Union, Generator
 
 import jpype
-from jpype._pykeywords import pysafe  # noqa : jpype does not expose a public API for the Java name mangling it applies
-
+import keyword
 import logging
 
 log = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ log = logging.getLogger(__name__)
 @dataclasses.dataclass(frozen=True)
 class TypeStr:
     name: str
-    type_args: list["TypeStr"] = dataclasses.field(default_factory=list)
+    type_args: list["TypeStr"] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -77,6 +78,30 @@ class Javadoc:
     ctors: str = ""
     methods: dict[str, str] = dataclasses.field(default_factory=dict)
     fields: dict[str, str] = dataclasses.field(default_factory=dict)
+
+
+EXTRA_RESERVED_WORDS = {"exec", "print"}  # Removed in Python 3.0
+
+
+def is_reserved_word(word):
+    return keyword.iskeyword(word) or word in EXTRA_RESERVED_WORDS
+
+
+def pysafe(s: str) -> str | None:
+    """
+    Given an identifier name in Java, return an equivalent identifier name in
+    Python that is guaranteed to not collide with the Python grammar.
+
+    """
+    if s.startswith("__") and s.endswith("__") and len(s) >= 4:
+        # Dunder methods should not be considered safe.
+        # (see system defined names in the Python documentation
+        # https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers
+        # )
+        return None
+    if is_reserved_word(s):
+        return s + "_"
+    return s
 
 
 def is_pseudo_package(package: jpype.JPackage) -> bool:
@@ -126,15 +151,15 @@ def generate_java_stubs(
     # Map package names to a set of direct subpackages
     # (e.g {'foo.bar': {'wibble', 'wobble'}}).
     subpackages = collections.defaultdict(set)
-    outputPath = pathlib.Path(output_dir)
+    output_path = pathlib.Path(output_dir)
     # Prepare a dictionary for *all* package names (including the parents of
     # the actual packages that we wish to generate stubs for) which maps to the
     # path of the appropriate __init__.pyi stubfile.
-    stubfile_packages_paths = {}
+    stubfile_packages_paths: dict[str, pathlib.Path] = {}
     for pkg_name in packages:
         pkg_parts = pkg_name.split(".")
 
-        submodule_path = outputPath
+        submodule_path = output_path
         submodule_name = ""
         for pkg_part in pkg_parts:
             if not submodule_name and use_stubs_suffix:
@@ -157,87 +182,170 @@ def generate_java_stubs(
         stubfile_path.parent.mkdir(parents=True, exist_ok=True)
 
         pkg = packages.get(pkg_name)
-        if pkg is not None:
-            generate_stubs_for_java_package(
-                pkg, stubfile_path, sorted(subpackages[pkg_name]), include_javadoc
-            )
-        else:
-            import_output = []
-            class_output = []
-            generate_module_protocol(
-                pkg_name,
-                [],
-                sorted(subpackages[pkg_name]),
-                import_output,
-                class_output,
-            )
-            output = []
-
-            for line in sorted(set(import_output)):
-                output.append(line)
-
-            output.extend([""] * 2)
-            for line in class_output:
-                output.append(line)
-            with stubfile_path.open("wt") as file:
-                for line in output:
-                    file.write(f"{line}\n")
+        if pkg is None:
+            continue
+        generate_stubs_for_java_package(
+            pkg, stubfile_path, sorted(subpackages[pkg_name]), include_javadoc
+        )
 
 
-def generate_jpype_jpackage_overload_stubs(
-    output_path: pathlib.Path, top_level_packages: list[str]
+def add_chaquopy_bindings_to_java_package(
+    output_path: pathlib.Path, import_output: list[str]
 ):
-    """Generate context for a jpype-stubs directory containing JPackage overloads for the given TLDs."""
-    output_path.mkdir(parents=True, exist_ok=True)
+    """Add the chaquopy api to the main 'java' package"""
+    import_output.append("""\
+from .chaquopy import (
+    cast,
+    detach,
+    jarray,
+    jclass,
+    set_import_enabled,
+    dynamic_proxy,
+    static_proxy,
+    constructor,
+    method,
+    Override,
+)""")
+    import_output.append("""\
+from .primitive import (
+    jvoid,
+    jboolean,
+    jbyte,
+    jshort,
+    jint,
+    jlong,
+    jfloat,
+    jdouble,
+    jchar,
+)""")
 
-    log.info(
-        f"Generating jpype-stubs for tld JPackages: {', '.join(top_level_packages)}"
+    (output_path / "chaquopy.pyi").write_text(
+        """\
+import typing
+
+from .primitive import _PRIMITIVE_TYPES
+
+from java.lang import Object, Class, Throwable
+
+# class.pxi #######################################################################################
+class JavaClass(type):
+    def __call__(cls, *args: typing.Any, **kwargs: typing.Any) -> Object: ...
+
+def jclass(clsname: str) -> JavaClass: ...
+
+# array.pxi #######################################################################################
+class ArrayClass(JavaClass): ...
+
+def jarray(
+    element_type: typing.Union[_PRIMITIVE_TYPES, JavaClass, ArrayClass, Class, str],
+) -> ArrayClass: ...
+
+# import.pxi #######################################################################################
+def set_import_enabled(enable: bool): ...
+
+# proxy.pxi #######################################################################################
+class ProxyClass(JavaClass): ...
+class DynamicProxyClass(ProxyClass): ...
+
+_JAVA_INTERFACE = typing.Any
+
+def dynamic_proxy(
+    *implements: _JAVA_INTERFACE,
+) -> DynamicProxyClass: ...
+
+class StaticProxyClass(ProxyClass): ...
+
+_JAVA_CLASS = typing.Union[JavaClass, Object]
+_JAVA_CLASS_T = typing.TypeVar("T", bound=_JAVA_CLASS)
+
+def static_proxy(
+    extends: typing.Optional[_JAVA_CLASS_T] = None,
+    *implements: _JAVA_INTERFACE,
+    package: str = None,
+    modifiers: str = "public",
+) -> _JAVA_CLASS_T: ...
+
+_JAVA_TYPES = typing.Union[_PRIMITIVE_TYPES, _JAVA_CLASS]
+
+def constructor(
+    arg_types: typing.Union[typing.List[_JAVA_TYPES], typing.Tuple[_JAVA_TYPES]],
+    *,
+    modifiers: str = "public",
+    throws: typing.Union[typing.List[Throwable], typing.Tuple[Throwable], None] = None,
+): ...
+def method(
+    return_type: _JAVA_TYPES,
+    arg_types: typing.Union[typing.List[_JAVA_TYPES], typing.Tuple[_JAVA_TYPES]],
+    *,
+    modifiers: str = "public",
+    throws: typing.Union[typing.List[Throwable], typing.Tuple[Throwable], None] = None,
+): ...
+def Override(
+    return_type: _JAVA_TYPES,
+    arg_types: typing.Union[typing.List[_JAVA_TYPES], typing.Tuple[_JAVA_TYPES]],
+    *,
+    modifiers: str = "public",
+    throws: typing.Union[typing.List[Throwable], typing.Tuple[Throwable], None] = None,
+): ...
+
+# utils.pxi #######################################################################################
+def cast(cls: _JAVA_CLASS_T, obj: typing.Any) -> _JAVA_CLASS_T: ...
+
+# jvm.pxi #######################################################################################
+def detach() -> None: ...
+""",
+        encoding="utf-8",
     )
 
-    # Following the guidance at https://www.python.org/dev/peps/pep-0561/#partial-stub-packages
-    # we ensure that other type stubs for JPype are honoured (unless they are also defined
-    # in a different "jpype-stubs" directory in site-packages).
-    (output_path / "py.typed").write_text("partial\n")
-    jpype_stubs_path = output_path / "__init__.pyi"
+    (output_path / "primitive.pyi").write_text(
+        """\
+import typing
 
-    imports = []
-    overloads = []
+class Primitive:
+    def __repr__(self): ...
+    def __eq__(self, other): ...
+    def __hash__(self): ...
+    def __lt__(self, other): ...
 
-    if top_level_packages:
-        imports.append(
-            textwrap.dedent(
-                """
-                import sys
-                if sys.version_info >= (3, 8):
-                    from typing import Literal
-                else:
-                    from typing_extensions import Literal
-                """,
-            )
-        )
+class jvoid(Primitive):
+    def __init__(self): ...
 
-    for name in top_level_packages:
-        imports.append(f"import {name}")
-        overloads.extend(
-            [
-                "",
-                "@typing.overload",
-                f"def JPackage(__package_name: Literal['{name}']) -> {name}.__module_protocol__: ...\n",
-            ]
-        )
+class jboolean(Primitive):
+    def __init__(self, value: typing.Any): ...
 
-    with jpype_stubs_path.open("wt") as fh:
-        fh.writelines(
-            [
-                "import types\n",
-                "import typing\n\n",
-                "\n".join(imports) + "\n\n",
-                "\n".join(overloads) + "\n\n",
-                "@typing.overload\n",
-                "def JPackage(__package_name: str) -> types.ModuleType: ...\n\n\n",
-                "def JPackage(__package_name) -> types.ModuleType: ...\n\n",
-            ]
-        )
+class NumericPrimitive(Primitive): ...
+
+class IntPrimitive(NumericPrimitive):
+    def __init__(self, value: int, truncate: bool = False): ...
+
+class jbyte(IntPrimitive): ...
+class jshort(IntPrimitive): ...
+class jint(IntPrimitive): ...
+class jlong(IntPrimitive): ...
+
+class FloatPrimitive(NumericPrimitive):
+    def __init__(self, value: typing.Union[float, int], truncate: bool = False): ...
+
+class jfloat(FloatPrimitive): ...
+class jdouble(FloatPrimitive): ...
+
+class jchar(Primitive):
+    def __init__(self, value): ...
+
+_PRIMITIVE_TYPES = typing.Union[
+    type(jvoid),
+    type(jboolean),
+    type(jbyte),
+    type(jshort),
+    type(jint),
+    type(jlong),
+    type(jfloat),
+    type(jdouble),
+    type(jchar),
+]
+""",
+        encoding="utf-8",
+    )
 
 
 def filter_class_names_in_package(package_name: str, types: set[str]) -> set[str]:
@@ -255,11 +363,11 @@ def filter_class_names_in_package(package_name: str, types: set[str]) -> set[str
     return local_types
 
 
-def package_classes(package: jpype.JPackage) -> list[jpype.JClass]:
+def package_classes(package: jpype.JPackage) -> Generator[jpype.JClass]:
     """Collect and return all classes which are DIRECT descendants of the given package."""
     for name in dir(package):
         try:
-            item = getattr(package, name)
+            item: jpype.JClass = getattr(package, name)
             if isinstance(item, jpype.JClass):
                 yield item
         except Exception as e:
@@ -267,7 +375,7 @@ def package_classes(package: jpype.JPackage) -> list[jpype.JClass]:
 
 
 def provide_customizer_stubs(
-    customizers_used: set[type], import_output: list[str], output_file: str
+    customizers_used: set[type], import_output: list[str], output_file: pathlib.Path
 ) -> None:
     """Write stubs for used JPype customizers."""
     # in the future, JPype (2.0?) will support customizers loaded from JAR files, inaccessible without the run-time
@@ -280,7 +388,7 @@ def provide_customizer_stubs(
 
 def generate_stubs_for_java_package(
     package: jpype.JPackage,
-    output_file: str,
+    output_file: pathlib.Path,
     subpackages: list[str],
     include_javadoc=False,
 ) -> None:
@@ -288,9 +396,7 @@ def generate_stubs_for_java_package(
     pkg_name = package.__name__
     java_classes = sorted(package_classes(package), key=lambda pkg: pkg.__name__)
     log.info(
-        f"Generating stubs for {pkg_name} ({len(java_classes)} classes, {
-            len(subpackages)
-        } subpackages)"
+        f"Generating stubs for {pkg_name} ({len(java_classes)} classes, {len(subpackages)} subpackages)"
     )
 
     import_output: list[str] = []
@@ -371,21 +477,17 @@ def generate_stubs_for_java_package(
                     f"reference to missing class {missing_private_class} - generating empty stub"
                 )
                 class_output.append("")
-                generate_Empty_class_stub(
+                generate_empty_class_stub(
                     missing_private_class,
                     classes_done=classes_done,
                     output=class_output,
                 )
-    generate_module_protocol(
-        pkg_name,
-        sorted([className for className in classes_done if "$" not in className]),
-        subpackages,
-        import_output,
-        class_output,
-    )
 
     if customizers_used:
         provide_customizer_stubs(customizers_used, import_output, output_file)
+
+    if pkg_name == "java":
+        add_chaquopy_bindings_to_java_package(output_file.parent, import_output)
 
     output = []
 
@@ -400,50 +502,6 @@ def generate_stubs_for_java_package(
             file.write(f"{line}\n")
 
 
-def generate_module_protocol(
-    pkg_name: str,
-    classes_in_module: list[str],
-    subpackages: list[str],
-    import_output: list[str],
-    class_output: list[str],
-) -> None:
-    """Mutate the given import and class output to include a __module_protocol__ typing.Protocol"""
-
-    import_output.append("import typing")
-    import_output.append(
-        textwrap.dedent(
-            """
-        import sys
-        if sys.version_info >= (3, 8):
-            from typing import Protocol
-        else:
-            from typing_extensions import Protocol
-        """,
-        )
-    )
-
-    protocol_output = [
-        "class __module_protocol__(Protocol):",
-        f'    # A module protocol which reflects the result of ``jp.JPackage("{pkg_name}")``.',
-        "",
-    ]
-
-    for class_name in classes_in_module:
-        protocol_output.append(f"    {class_name}: typing.Type[{class_name}]")
-
-    for subpackage_name in subpackages:
-        import_output.append(f"import {pkg_name}.{subpackage_name}")
-        protocol_output.append(
-            f"    {subpackage_name}: {pkg_name}.{subpackage_name}.__module_protocol__"
-        )
-    if not classes_in_module and not subpackages:
-        protocol_output.append("    pass")
-
-    if class_output:
-        class_output.extend([""] * 2)
-    class_output.extend(protocol_output)
-
-
 def simple_class_name_of(j_class: jpype.JClass) -> str:
     return str(j_class.class_.getName()).split(".")[-1]
 
@@ -451,13 +509,13 @@ def simple_class_name_of(j_class: jpype.JClass) -> str:
 def is_java_class(obj: type) -> bool:
     """Check if a type is a 'real' Java class. This excludes synthetic/anonymous Java classes.
 
-    >>> import java.lang.Object  # noqa
+    >>> import java.lang.Object
     >>> is_java_class(java.lang.Object)
     True
-    >>> import java.util.list  # noqa
+    >>> import java.util.list
     >>> is_java_class(java.util.list)
     True
-    >>> import java.util  # noqa
+    >>> import java.util
     >>> is_java_class(java.util)
     False
     >>> is_java_class(str)
@@ -472,7 +530,7 @@ def is_java_class(obj: type) -> bool:
         obj.class_.isAnonymousClass()
         or obj.class_.isLocalClass()
         or obj.class_.isSynthetic()
-    ):  # noqa
+    ):
         return False
     return True
 
@@ -509,17 +567,17 @@ def dependencies_satisfied(
 def java_super_types(j_class: jpype.JClass) -> list[Any]:
     """Get all supertypes of the provided Java class, up to, but not including, java.lang.Object
 
-    >>> import java.lang.Object  # noqa
+    >>> import java.lang.Object
     >>> for t in java_super_types(java.lang.Object): print(t)
     ...
-    >>> import java.lang.Class  # noqa
+    >>> import java.lang.Class
     >>> for t in java_super_types(java.lang.Class): print(t)
     ...
     interface java.io.Serializable
     interface java.lang.reflect.GenericDeclaration
     interface java.lang.reflect.Type
     interface java.lang.reflect.AnnotatedElement
-    >>> import java.util.ArrayList  # noqa
+    >>> import java.util.ArrayList
     >>> for t in java_super_types(java.util.ArrayList): print(t)
     ...
     java.util.AbstractList<E>
@@ -540,7 +598,7 @@ def java_super_types(j_class: jpype.JClass) -> list[Any]:
 @functools.lru_cache(maxsize=None)
 def convert_strings() -> bool:
     """Check whether the JPype convertStrings flag is set, i.e. if java.lang.String is mapped to python str"""
-    from java.lang import String  # noqa
+    from java.lang import String  # type: ignore
 
     return isinstance(String().trim(), str)
 
@@ -553,7 +611,7 @@ def is_method_present_in_java_lang_object(jMethod: Any) -> bool:
 
     [1] https://docs.oracle.com/javase/specs/jls/se8/html/jls-9.html#jls-9.8
     """
-    from java.lang import Object  # noqa
+    from java.lang import Object  # type: ignore
 
     try:
         Object.class_.getDeclaredMethod(jMethod.getName(), jMethod.getParameterTypes())
@@ -678,10 +736,10 @@ def handle_implicit_conversions(
         )
         return TypeStr(type_name, type_args)
 
-    union = []
+    union: list[TypeStr] = []
     for typ in class_hints.exact + class_hints.implicit:
         if is_java_class(typ):
-            type_name = str(typ.class_.getName())  # noqa
+            type_name = str(typ.class_.getName())
         elif hasattr(typ, "__name__") and hasattr(typ, "__module__"):
             if typ.__module__ == "builtins":
                 type_name = typ.__qualname__
@@ -689,19 +747,23 @@ def handle_implicit_conversions(
                 type_name = typ.__module__ + "." + typ.__qualname__
         else:
             type_name = str(typ)  # e.g. typing aliases
+        
+        if type_name.startswith("jpype"):
+            continue  # ignore jpype specific types for chaquopy
 
         if type_name == "typing.Callable" and type_args is not None:
             # callable is a special case that needs mangling of type arguments
             union.append(
                 TypeStr(
-                    type_name, mangle_callable_type_args(jp_class.class_, type_args)
+                    type_name,
+                    mangle_callable_type_args(jp_class.class_, type_args),
                 )
             )
         else:
-            union.append(TypeStr(type_name, type_args or []))
+            union.append(TypeStr(type_name, type_args))
     if len(union) > 1:
         return TypeStr("typing.Union", union)
-    return TypeStr(type_name, type_args)
+    return TypeStr(union[0].name, union[0].type_args)
 
 
 def translate_type_name(
@@ -794,7 +856,10 @@ def translate_java_array_type(
     element_type = java_array_component_type(javaType)
     python_element_type = python_type(element_type, typeVars)
     if isArgument:
-        union = [TypeStr("typing.list", [python_element_type]), TypeStr("jpype.JArray")]
+        union = [
+            TypeStr("typing.List", [python_element_type]),
+            TypeStr("java.chaquopy.ArrayClass"),
+        ]
         if str(element_type) == "byte":
             # hack: JPype supports converting bytes/bytearray to byte[] but
             # this is not advertised in hints...
@@ -811,7 +876,7 @@ def java_array_component_type(java_type: Any) -> Any:
     :param javaType: the array type
     :return: the component type
     """
-    from java.lang.reflect import GenericArrayType  # noqa
+    from java.lang.reflect import GenericArrayType  # type: ignore
 
     if isinstance(java_type, GenericArrayType):
         return java_type.getGenericComponentType()
@@ -834,12 +899,12 @@ def python_type(
 
     Java arrays are represented as python Lists, as jpype.JArray is currently not Generic.
     """
-    from java.lang.reflect import (
+    from java.lang.reflect import (  # type: ignore
         GenericArrayType,
         ParameterizedType,
         TypeVariable,
         WildcardType,
-    )  # noqa
+    )
 
     if java_type is None:
         return TypeStr("None")
@@ -905,7 +970,7 @@ def python_type_var(java_type: Any, uniq_scope_id: str) -> TypeVarStr:
     to represent a Java parametrized type fully as a TypeVar. In such case, this method will generate a python
     TypeVar which covers the Java type (but may be more permissive than the Java type).
     """
-    from java.lang.reflect import TypeVariable, ParameterizedType  # noqa
+    from java.lang.reflect import TypeVariable  # type: ignore
 
     if not isinstance(java_type, TypeVariable):
         raise RuntimeError(
@@ -930,7 +995,7 @@ def java_type_variable_bound(java_type: Any) -> Any:
     Also, java type bounds can be nested, e.g. "E extends Enum<E>". This is not supported by stubgenj at the
     moment. We generate "E" with a bound of "Enum" in this case.
     """
-    from java.lang.reflect import ParameterizedType  # noqa
+    from java.lang.reflect import ParameterizedType  # type: ignore
 
     j_bound = java_type.getBounds()[0]
     if isinstance(j_bound, ParameterizedType):
@@ -972,21 +1037,21 @@ def infer_arg_name(java_type: Any, prev_args: list[ArgSig]) -> str:
 
 def is_static(member: Any) -> bool:
     """Check if a Java class member is static (class function, field, ...)."""
-    from java.lang.reflect import Modifier  # noqa
+    from java.lang.reflect import Modifier  # type: ignore
 
     return member.getModifiers() & Modifier.STATIC > 0
 
 
 def is_public(member: Any) -> bool:
     """Check if a Java class member is public."""
-    from java.lang.reflect import Modifier  # noqa
+    from java.lang.reflect import Modifier  # type: ignore
 
     return member.getModifiers() & Modifier.PUBLIC > 0
 
 
 def is_abstract(member: Any) -> bool:
     """Check if a Java class member is public."""
-    from java.lang.reflect import Modifier  # noqa
+    from java.lang.reflect import Modifier  # type: ignore
 
     return member.getModifiers() & Modifier.ABSTRACT > 0
 
@@ -1065,7 +1130,7 @@ def split_method_overload_javadoc(
 
 
 def generate_java_method_stub(
-    parentName: str,
+    parent_name: str,
     name: str,
     j_overloads: list[Any],
     javadoc: dict[str, str],
@@ -1128,7 +1193,7 @@ def generate_java_method_stub(
         for typeVar in signature.type_vars:
             output.append(
                 to_type_var_declaration(
-                    typeVar, parentName, classes_done, classes_used, imports_output
+                    typeVar, parent_name, classes_done, classes_used, imports_output
                 )
             )
 
@@ -1145,24 +1210,24 @@ def generate_java_method_stub(
         sig = []
         for i, arg in enumerate(signature.args):
             if arg.name == "self":
-                argDef = arg.name
+                arg_def = arg.name
             else:
-                argDef = pysafe(arg.name)
-                if argDef is None:
-                    argDef = f"invalidArgName{i}"
+                arg_def = pysafe(arg.name)
+                if arg_def is None:
+                    arg_def = f"invalidArgName{i}"
                 if arg.var_args:
-                    argDef = "*" + argDef
+                    arg_def = "*" + arg_def
 
                 if arg.arg_type:
-                    argDef += ": " + to_annotated_type(
+                    arg_def += ": " + to_annotated_type(
                         arg.arg_type,
-                        parentName,
+                        parent_name,
                         classes_done,
                         classes_used,
                         imports_output,
                     )
 
-            sig.append(argDef)
+            sig.append(arg_def)
 
         if is_constructor:
             output.append(
@@ -1185,7 +1250,7 @@ def generate_java_method_stub(
                     args=", ".join(sig),
                     ret=to_annotated_type(
                         signature.ret_type,
-                        parentName,
+                        parent_name,
                         classes_done,
                         classes_used,
                         imports_output,
@@ -1234,7 +1299,7 @@ def generate_java_field_stub(
 
 def pysafe_package_path(package_path: str) -> str:
     """Apply the JPype package name mangling. Segments which would clash with a python keyword are suffixed by '_'."""
-    return ".".join([pysafe(p) for p in package_path.split(".")])
+    return ".".join([pysafe(p) or "" for p in package_path.split(".")])
 
 
 def to_annotated_type(
@@ -1282,7 +1347,7 @@ def to_annotated_type(
                     to_annotated_type(
                         t, package_name, classes_done, types_used, imports_output
                     )
-                    for t in type_name.type_args
+                    for t in type_name.type_args or []
                 ]
             )
             + "]"
@@ -1325,30 +1390,31 @@ def jpype_customizer_super_types(
     customizers_used: set[type],
 ) -> list[str]:
     """Get extra 'artificial' super types to add, to take into account the effect of JPype customizers."""
-    extra_super_types = []
-    for customizer in j_class._hints.implementations:
-        type_str = customizer.__qualname__
-        if class_type_vars:
-            type_str += (
-                "[" + ", ".join([tv.python_name for tv in class_type_vars]) + "]"
-            )
-        extra_super_types.append(type_str)
-        customizers_used.add(customizer)
-    if (
-        j_class.class_.getName() == "java.lang.Throwable"
-        and "JException" not in extra_super_types
-    ):
-        # Workaround to allow Throwable-derived exception types be recognized
-        # as JException, so that they can be assigned as Exception.__cause__
-        extra_super_types.append("JException")
-        customizers_used.add(jpype.JException)  # noqa
-    return extra_super_types
+    # extra_super_types = []
+    # for customizer in j_class._hints.implementations:
+    #     type_str = customizer.__qualname__
+    #     if class_type_vars:
+    #         type_str += (
+    #             "[" + ", ".join([tv.python_name for tv in class_type_vars]) + "]"
+    #         )
+    #     extra_super_types.append(type_str)
+    #     customizers_used.add(customizer)
+    # if (
+    #     j_class.class_.getName() == "java.lang.Throwable"
+    #     and "JException" not in extra_super_types
+    # ):
+    #     # Workaround to allow Throwable-derived exception types be recognized
+    #     # as JException, so that they can be assigned as Exception.__cause__
+    #     extra_super_types.append("JException")
+    #     customizers_used.add(jpype.JException)
+    # return extra_super_types
+    return []
 
 
-def sanitize_javadoc_html(escaped_html: str | None) -> str | None:
+def sanitize_javadoc_html(escaped_html: str | None) -> str:
     """Un-Escape common html escapes used, and change the non-breaking space (unicode 200B) to ' '"""
     if escaped_html is None:
-        return None
+        return ""
     else:
         return (
             str(escaped_html)
@@ -1362,7 +1428,7 @@ def sanitize_javadoc_html(escaped_html: str | None) -> str | None:
 
 def extract_class_javadoc(j_class: jpype.JClass) -> Javadoc:
     try:
-        from org.jpype.javadoc import JavadocExtractor  # noqa
+        from org.jpype.javadoc import JavadocExtractor  # type: ignore
 
         j_doc = JavadocExtractor().getDocumentation(j_class)
         if j_doc is None:
@@ -1401,8 +1467,8 @@ def generate_java_class_stub(
     customizers_used: set[type],
     output: list[str],
     imports_output: list[str],
-    type_var_output: list[str] = None,
-    parent_class_type_vars: list[TypeVarStr] = None,
+    type_var_output: list[str] | None = None,
+    parent_class_type_vars: list[TypeVarStr] | None = None,
 ) -> None:
     """Generate stubs for a single Java class and all of it's nested classes."""
     package_name = package.__name__
@@ -1416,7 +1482,7 @@ def generate_java_class_stub(
     write_type_vars_to_output = False
     if type_var_output is None:
         write_type_vars_to_output = True
-        type_var_output: list[str] = []
+        type_var_output = []
 
     class_prefix = (
         str(j_class.class_.getName())
@@ -1537,7 +1603,7 @@ def generate_java_class_stub(
                 log.warning(
                     f"reference to missing inner class {nested_class} - generating empty stub"
                 )
-                generate_Empty_class_stub(
+                generate_empty_class_stub(
                     nested_class,
                     classes_done=classes_done_nested,
                     output=nested_classes_output,
@@ -1607,7 +1673,7 @@ def generate_java_class_stub(
     classes_done.add(simple_class_name_of(j_class))
 
 
-def generate_Empty_class_stub(
+def generate_empty_class_stub(
     class_name: str, classes_done: set[str], output: list[str]
 ):
     """Generate an empty class stub. This is used to represent classes with are not accessible (e.g. private)"""
