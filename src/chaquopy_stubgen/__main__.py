@@ -71,9 +71,9 @@ if __name__ == "__main__":
     jpype.startJVM(
         jvmpath=args.jvmpath, classpath=classpath, convertStrings=args.convert_strings
     )  # noqa: exists
-    prefixPackages = [importlib.import_module(prefix) for prefix in args.prefixes]
+    prefix_packages = [importlib.import_module(prefix) for prefix in args.prefixes]
     generate_java_stubs(
-        prefixPackages,
+        prefix_packages,  # type: ignore
         use_stubs_suffix=args.with_stubs_suffix,
         output_dir=args.output_dir,
         include_javadoc=args.with_javadoc,

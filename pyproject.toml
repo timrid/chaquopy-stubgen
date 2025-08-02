@@ -39,6 +39,7 @@ dev = [
 ]
 test = [
     "pytest",
+    "mypy",
 ]
 
 [tool.setuptools_scm]

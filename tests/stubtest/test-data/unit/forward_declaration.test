@@ -1,0 +1,9 @@
+
+[case testArgumentTypeDeclaration]
+import typing
+
+if typing.TYPE_CHECKING:
+    import java.util
+
+def foo(arg: "java.util.Formatter"):
+    reveal_type(arg)         # N: Revealed type is "java.util.Formatter"
