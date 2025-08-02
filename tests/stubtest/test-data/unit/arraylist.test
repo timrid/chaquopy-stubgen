@@ -1,21 +1,42 @@
 [case testArrayListValid]
 from java.util import ArrayList
 
-pylist = ['test', '1', '2']
-java_array_list = ArrayList(pylist)
+java_array_list: ArrayList[str] = ArrayList()
 java_array_list.add('42')
 
 reveal_type(java_array_list)        # N: Revealed type is "java.util.ArrayList[builtins.str]"
 reveal_type(java_array_list.get(0)) # N: Revealed type is "builtins.str"
-reveal_type(java_array_list[0])     # N: Revealed type is "builtins.str"
 
 
 [case testArrayListInvalid]
 from java.util import ArrayList
 
-pylist = ['test', '1', '2']
-java_array_list = ArrayList(pylist)
+java_array_list: ArrayList[str] = ArrayList()
 java_array_list.add(42) # E: No overload variant of "add" of "ArrayList" matches argument type "int" \
                         # N: Possible overload variants: \
                         # N:     def add(self, e: str) -> bool \
                         # N:     def add(self, int: int, e: str) -> None
+
+
+[case testArrayListNoImplicitConversion]
+from java.util import ArrayList
+
+pylist = ['test', '1', '2']
+java_array_list = ArrayList(pylist) # E: No overload variant of "ArrayList" matches argument type "list[str]" \
+                                    # N: Possible overload variants: \
+                                    # N:     def [_ArrayList__E] __init__(self) -> ArrayList[_ArrayList__E] \
+                                    # N:     def [_ArrayList__E] __init__(self, int: int) -> ArrayList[_ArrayList__E] \
+                                    # N:     def [_ArrayList__E] __init__(self, collection: Collection[_ArrayList__E]) -> ArrayList[_ArrayList__E]
+
+
+[case testArrayListMissingTypeAnnotation]
+from java.util import ArrayList
+
+java_array_list = ArrayList(2) # E: Need type annotation for "java_array_list"
+
+
+[case testArrayListNoGetitem]
+from java.util import ArrayList
+
+java_array_list: ArrayList[str] = ArrayList()
+java_array_list[0] # E: Value of type "ArrayList[str]" is not indexable

@@ -672,11 +672,12 @@ def translate_type_name(
         return TypeStr("str")
     if type_name == "java.lang.Class":
         return TypeStr("typing.Type", type_args)
-    if type_name == "java.lang.Object":
-        return TypeStr("typing.Any")
+    # if type_name == "java.lang.Object":
+    #     return TypeStr("typing.Any")
 
-    if implicit_conversions:
-        return handle_implicit_conversions(type_name, type_args)
+    # chaquopy does not support implicit conversions
+    # if implicit_conversions:
+    #     return handle_implicit_conversions(type_name, type_args)
 
     return TypeStr(type_name, type_args)
 
@@ -826,7 +827,7 @@ def python_type_var(java_type: Any, uniq_scope_id: str) -> TypeVarStr:
             f"Can not convert to type var {str(java_type)} ({repr(java_type)})"
         )
     bound = python_type(java_type_variable_bound(java_type))
-    if bound.name == "typing.Any":
+    if bound.name == "java.lang.Object":
         bound = None  # unbounded
     java_name = str(java_type.getName())
     return TypeVarStr(

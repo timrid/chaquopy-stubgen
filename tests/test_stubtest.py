@@ -28,7 +28,7 @@ def setup_mypy_for_data_driven_tests(stub_tmpdir: str):
 
     mypy.build.build = _patched_build
 
-    mypy.modulefinder.get_search_dirs = lambda _: ([stub_tmpdir], [stub_tmpdir])
+    mypy.modulefinder.get_search_dirs = lambda _: ([stub_tmpdir], [stub_tmpdir])  # type: ignore
 
 
 def test_generate_stubs(stub_tmpdir: Path):
@@ -43,6 +43,10 @@ def test_generate_stubs(stub_tmpdir: Path):
 
 @pytest.mark.trylast
 class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
+    def setup(self) -> None:
+        pass
+
+
     files = [
         "arraylist.test",
         "callbacks.test",

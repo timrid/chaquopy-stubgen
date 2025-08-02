@@ -9,19 +9,17 @@ import pytest
 pytest_plugins = [
     "mypy.test.data",
 ]
-os.environ["MYPY_TEST_PREFIX"] = str(
-    pathlib.Path(__file__).parent / "stubtest"
-)
+os.environ["MYPY_TEST_PREFIX"] = str(pathlib.Path(__file__).parent / "stubtest")
 
 ANDROID_JAR = pathlib.Path(__file__).parent / "android-35.jar"
 
 
 @pytest.fixture(autouse=True, scope="session")
 def jvm():
-    import jpype
+    import jpype  # type: ignore
 
     if not jpype.isJVMStarted():
         jpype.startJVM(None, classpath=[ANDROID_JAR], convertStrings=True)  # type: ignore
-    import jpype.imports  # noqa
+    import jpype.imports  # type: ignore
 
     yield jpype
