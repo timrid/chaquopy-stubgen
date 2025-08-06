@@ -8,9 +8,9 @@ BitSet(1).or_(BitSet(2))
 
 [case testNoUnmangledMethodsAreGenerated_and]
 from java.util import BitSet
-BitSet(1).and(BitSet(2))  # E: Invalid syntax
+BitSet(1).and(BitSet(2))  # E: invalid syntax
 
 [case testNoUnmangledMethodsAreGenerated_or]
 from java.util import BitSet
-BitSet(1).or(BitSet(2))   # E: Invalid syntax
+BitSet(1).or(BitSet(2))   # E: invalid syntax
 

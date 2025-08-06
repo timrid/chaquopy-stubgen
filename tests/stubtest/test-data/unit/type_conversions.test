@@ -1,0 +1,8 @@
+[case testTypeConversionsByteFromInt]
+from java.lang import Byte
+Byte(5)
+
+[case testTypeConversionsByteFromString]
+from java.lang import Byte
+Byte("Testing")
+

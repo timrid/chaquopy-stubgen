@@ -9,4 +9,5 @@ This is developed for Chaquopy 16.1.
 
 # Usage
 1. Create new venv: `uv venv`
+2. Install packages `uv pip install -e ".[dev]"`
 2. Call e.g. `python -m chaquopy_stubgen android java --classpath ../chaquopy-stubs/android-35.jar --output-dir ../chaquopy-stubs/`

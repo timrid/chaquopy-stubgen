@@ -34,8 +34,7 @@ dynamic = ["version"]
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "mypy>=0.931,<0.971",
-    "typing_extensions;python_version<'3.8'",
+    "mypy==1.15.0",
 ]
 test = [
     "pytest",

@@ -189,7 +189,6 @@ def generate_java_stubs(
             )
 
 
-
 def filter_class_names_in_package(package_name: str, types: set[str]) -> set[str]:
     """From the provided list of class names, filter and return those which are DIRECT descendants of the package
 
@@ -444,14 +443,6 @@ def java_super_types(j_class: jpype.JClass) -> list[Any]:
     return super_types
 
 
-@functools.lru_cache(maxsize=None)
-def convert_strings() -> bool:
-    """Check whether the JPype convertStrings flag is set, i.e. if java.lang.String is mapped to python str"""
-    from java.lang import String  # type: ignore
-
-    return isinstance(String().trim(), str)
-
-
 def is_method_present_in_java_lang_object(jMethod: Any) -> bool:
     """
     Checks is a particular method signature is present on java.lang.Object.
@@ -551,70 +542,6 @@ def mangle_callable_type_args(
     return [TypeStr("", resolved_param_types), resolved_return_type]
 
 
-def handle_implicit_conversions(
-    type_name: str, type_args: list[TypeStr] | None = None
-) -> TypeStr:
-    """
-    Construct a TypeStr to be used as a METHOD ARGUMENT, taking into account implicit conversions by JPype.
-    The resulting TypeStr may be an Union[...], in case JPype accepts multiple types for implicit conversion.
-    E.g. for java.util.Collection this gives typing.Union[typing.Sequence, java.util.Collection]
-
-    >>> handleImplicitConversions('java.lang.String', [])
-    TypeStr(name='typing.Union', type_args=[TypeStr(name='java.lang.String', type_args=[]), TypeStr(name='str', type_args=[])])
-    >>> handleImplicitConversions('java.lang.Class')
-    TypeStr(name='typing.Union', type_args=[TypeStr(name='java.lang.Class', type_args=[]), TypeStr(name='_jpype._JClass', type_args=[])])
-    >>> handleImplicitConversions('java.util.Collection', [TypeStr('java.lang.String')])
-    TypeStr(name='typing.Union', type_args=[TypeStr(name='java.util.Collection', type_args=[TypeStr(name='java.lang.String', type_args=[])]), TypeStr(name='typing.Sequence', type_args=[TypeStr(name='java.lang.String', type_args=[])]), TypeStr(name='typing.set', type_args=[TypeStr(name='java.lang.String', type_args=[])])])
-    >>> handleImplicitConversions('cern.custom.Class')
-    TypeStr(name='cern.custom.Class', type_args=None)
-
-    """
-    if type_name == "java.lang.Throwable":
-        # workaround - jpype reporting too many implicit conversions ?
-        return TypeStr(type_name)
-
-    try:
-        jp_class = jpype.JClass(type_name)
-        class_hints = jp_class._hints  # noqa: JPype does not expose the class hints, but we need them ...
-    except TypeError:
-        # In case JClass can not be constructed, we assume JPype won't do any implicit conversion.
-        # Usually this should not happen since the class has been loaded before; except for some edge cases with
-        # partially unsatisfied dependencies.
-        log.warning(
-            f"Can not obtain JPype type hints for {type_name} - assuming no implicit conversion by JPype!"
-        )
-        return TypeStr(type_name, type_args)
-
-    union: list[TypeStr] = []
-    for typ in class_hints.exact + class_hints.implicit:
-        if is_java_class(typ):
-            type_name = str(typ.class_.getName())
-        elif hasattr(typ, "__name__") and hasattr(typ, "__module__"):
-            if typ.__module__ == "builtins":
-                type_name = typ.__qualname__
-            else:
-                type_name = typ.__module__ + "." + typ.__qualname__
-        else:
-            type_name = str(typ)  # e.g. typing aliases
-
-        if type_name.startswith("jpype") or type_name.startswith("_jpype"):
-            continue  # ignore jpype specific types for chaquopy
-
-        if type_name == "typing.Callable" and type_args is not None:
-            # callable is a special case that needs mangling of type arguments
-            union.append(
-                TypeStr(
-                    type_name,
-                    mangle_callable_type_args(jp_class.class_, type_args),
-                )
-            )
-        else:
-            union.append(TypeStr(type_name, type_args))
-    if len(union) > 1:
-        return TypeStr("typing.Union", union)
-    return TypeStr(union[0].name, union[0].type_args)
-
-
 def translate_type_name(
     type_name: str,
     type_args: list[TypeStr] | None = None,
@@ -648,42 +575,66 @@ def translate_type_name(
     TypeStr(name='int', type_args=[])
 
     """
+    union: list[TypeStr] = []
     if type_name in ("void", "java.lang.Void"):
-        return TypeStr("None")
-    if type_name in (
-        "byte",
-        "short",
-        "int",
-        "long",
-        "java.lang.Byte",
-        "java.lang.Short",
-        "java.lang.Integer",
-        "java.lang.Long",
-    ):
-        return TypeStr("int")
+        union.append(TypeStr("None"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Void"))
+    if type_name in ("byte", "java.lang.Byte"):
+        union.append(TypeStr("int"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Byte"))
+    if type_name in ("short", "java.lang.Short"):
+        union.append(TypeStr("int"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Short"))
+    if type_name in ("int", "java.lang.Integer"):
+        union.append(TypeStr("int"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Integer"))
+    if type_name in ("long", "java.lang.Long"):
+        union.append(TypeStr("int"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Long"))
     if type_name in ("boolean", "java.lang.Boolean"):
-        return TypeStr("bool")
-    if type_name in ("double", "float", "java.lang.Double", "java.lang.Float"):
-        return TypeStr("float")
+        union.append(TypeStr("bool"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Boolean"))
+    if type_name in ("double", "java.lang.Double"):
+        union.append(TypeStr("float"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Double"))
+    if type_name in ("float", "java.lang.Float"):
+        union.append(TypeStr("float"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Float"))
     if type_name in ("char", "java.lang.Character"):
-        return TypeStr("str")  # 1-character string
-
-    if type_name == "java.lang.String" and convert_strings():
-        return TypeStr("str")
+        union.append(TypeStr("str"))  # 1-character string
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.Character"))
+    if type_name == "java.lang.String":
+        union.append(TypeStr("str"))
+        if implicit_conversions:
+            union.append(TypeStr("java.lang.String"))
     if type_name == "java.lang.Class":
-        return TypeStr("typing.Type", type_args)
-    # if type_name == "java.lang.Object":
-    #     return TypeStr("typing.Any")
+        union.append(TypeStr("typing.Type", type_args))
+    if type_name == "java.lang.Object":
+        union.append(TypeStr("java.lang.Object"))
+        if implicit_conversions:
+            union.append(TypeStr("int"))
+            union.append(TypeStr("bool"))
+            union.append(TypeStr("float"))
+            union.append(TypeStr("str"))
 
-    # chaquopy does not support implicit conversions
-    # if implicit_conversions:
-    #     return handle_implicit_conversions(type_name, type_args)
-
+    if len(union) == 1:
+        return TypeStr(union[0].name, union[0].type_args)
+    if len(union) > 1:
+        return TypeStr("typing.Union", union)
     return TypeStr(type_name, type_args)
 
 
 def translate_java_array_type(
-    javaType: Any, typeVars: list[TypeVarStr] | None, isArgument: bool
+    javaType: Any, typeVars: list[TypeVarStr] | None, is_argument: bool
 ) -> TypeStr:
     """
     Translate a Java array type to python type.
@@ -705,10 +656,10 @@ def translate_java_array_type(
     """
     element_type = java_array_component_type(javaType)
     python_element_type = python_type(element_type, typeVars)
-    if isArgument:
+    if is_argument:
         union = [
             TypeStr("typing.List", [python_element_type]),
-            TypeStr("java.jarray"), # , [TypeStr(str(element_type))]),
+            TypeStr("java.jarray"),  # , [TypeStr(str(element_type))]),
         ]
         if str(element_type) == "byte":
             # hack: JPype supports converting bytes/bytearray to byte[] but
@@ -789,7 +740,7 @@ def python_type(
                 j_bound = j_lower_bounds[0]
         return python_type(j_bound, type_vars)
     elif isinstance(java_type, GenericArrayType) or java_type.isArray():
-        return translate_java_array_type(java_type, type_vars, isArgument=is_argument)
+        return translate_java_array_type(java_type, type_vars, is_argument=is_argument)
     else:
         return translate_type_name(
             str(java_type.getName()), implicit_conversions=is_argument
@@ -1054,6 +1005,7 @@ def generate_java_method_stub(
 
     for signature, overload_javadoc in zip(signatures, overloads_javadoc):
         if is_overloaded:
+            imports_output.append("import typing")
             output.append("@typing.overload")
         if signature.static:
             output.append("@staticmethod")
@@ -1081,7 +1033,7 @@ def generate_java_method_stub(
 
         if is_constructor:
             output.append(
-                "def __init__({args}):{ellipsis}".format(
+                "def __init__({args}) -> None:{ellipsis}".format(
                     args=", ".join(sig), ellipsis="" if overload_javadoc else " ..."
                 )
             )
@@ -1138,6 +1090,7 @@ def generate_java_field_stub(
         can_be_deferred=True,
     )
     if static:
+        imports_output.append("import typing")
         field_type_annotation = f"typing.ClassVar[{field_type_annotation}]"
     py_safe_field_name = pysafe(field_name)
     if py_safe_field_name is None:
@@ -1173,14 +1126,14 @@ def to_annotated_type(
     if "." in a_type:
         a_type = pysafe_package_path(a_type)
         types_used.add(a_type)
-        a_type_parent, _, localType = a_type.rpartition(".")
+        a_type_parent, _, local_type = a_type.rpartition(".")
         if a_type_parent == "builtins":
-            a_type = localType
+            a_type = local_type
         elif a_type_parent == pysafe_package_path(package_name):
-            if localType in classes_done:
-                a_type = localType
+            if local_type in classes_done:
+                a_type = local_type
             elif can_be_deferred:
-                a_type = f"'{localType}'"
+                a_type = local_type
             else:
                 # use fully qualified name - add import to our own domain
                 own_package = a_type.partition(".")[0]
@@ -1189,19 +1142,11 @@ def to_annotated_type(
             imports_output.append(f"import {a_type_parent}")
     a_type = a_type.replace("$", ".")
     if type_name.type_args or a_type == "":
-        return (
-            a_type
-            + "["
-            + ", ".join(
-                [
-                    to_annotated_type(
-                        t, package_name, classes_done, types_used, imports_output
-                    )
-                    for t in type_name.type_args or []
-                ]
-            )
-            + "]"
-        )
+        type_args = [
+            to_annotated_type(t, package_name, classes_done, types_used, imports_output)
+            for t in type_name.type_args or []
+        ]
+        return f"{a_type}[{', '.join(type_args)}]"
     else:
         return a_type
 
@@ -1214,6 +1159,7 @@ def to_type_var_declaration(
     imports_output: list[str],
 ) -> str:
     """Convert a python type variable, represented as a TypeVarStr, to the actual textual stub file output."""
+    imports_output.append("import typing")
     if type_var.bound is not None:
         return (
             "{pyname} = typing.TypeVar('{pyname}', bound={bound})  # <{jname}>".format(
@@ -1234,13 +1180,14 @@ def to_type_var_declaration(
         )
 
 
-def jpype_customizer_super_types(
+def chaquopy_customizer_super_types(
     j_class: jpype.JClass,
     class_type_vars: list[TypeVarStr],
     customizers_used: set[type],
+    imports_output: list[str],
 ) -> list[str]:
     """Get extra 'artificial' super types to add, to take into account the effect of JPype customizers."""
-    # extra_super_types = []
+    extra_super_types = []
     # for customizer in j_class._hints.implementations:
     #     type_str = customizer.__qualname__
     #     if class_type_vars:
@@ -1249,15 +1196,12 @@ def jpype_customizer_super_types(
     #         )
     #     extra_super_types.append(type_str)
     #     customizers_used.add(customizer)
-    # if (
-    #     j_class.class_.getName() == "java.lang.Throwable"
-    #     and "JException" not in extra_super_types
-    # ):
-    #     # Workaround to allow Throwable-derived exception types be recognized
-    #     # as JException, so that they can be assigned as Exception.__cause__
-    #     extra_super_types.append("JException")
-    #     customizers_used.add(jpype.JException)
-    # return extra_super_types
+    if j_class.class_.getName() == "java.lang.Throwable":
+        # Workaround to allow Throwable-derived exception types be recognized
+        # as JException, so that they can be assigned as Exception.__cause__
+        extra_super_types.append("builtins.Exception")
+        imports_output.append("import builtins")
+    return extra_super_types
     return []
 
 
@@ -1474,8 +1418,8 @@ def generate_java_class_stub(
     if class_type_vars:
         generic_type_arguments = ", ".join([tv.python_name for tv in class_type_vars])
         super_types.append(f"typing.Generic[{generic_type_arguments}]")
-    super_types = super_types + jpype_customizer_super_types(
-        j_class, class_type_vars, customizers_used
+    super_types = super_types + chaquopy_customizer_super_types(
+        j_class, class_type_vars, customizers_used, imports_output
     )
     for type_var in class_type_vars:
         type_var_output.append(

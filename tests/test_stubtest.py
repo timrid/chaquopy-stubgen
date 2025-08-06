@@ -56,4 +56,5 @@ class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
         "mangled_python_keywords.test",
         "varargs.test",
         "exception.test",
+        "type_conversions.test",
     ]

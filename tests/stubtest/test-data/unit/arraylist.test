@@ -15,17 +15,17 @@ java_array_list: ArrayList[str] = ArrayList()
 java_array_list.add(42) # E: No overload variant of "add" of "ArrayList" matches argument type "int" \
                         # N: Possible overload variants: \
                         # N:     def add(self, e: str) -> bool \
-                        # N:     def add(self, int: int, e: str) -> None
+                        # N:     def add(self, int: Union[int, Integer], e: str) -> None
 
 
 [case testArrayListNoImplicitConversion]
 from java.util import ArrayList
 
 pylist = ['test', '1', '2']
-java_array_list = ArrayList(pylist) # E: No overload variant of "ArrayList" matches argument type "list[str]" \
+java_array_list = ArrayList(pylist) # E: No overload variant of "ArrayList" matches argument type "List[str]" \
                                     # N: Possible overload variants: \
                                     # N:     def [_ArrayList__E] __init__(self) -> ArrayList[_ArrayList__E] \
-                                    # N:     def [_ArrayList__E] __init__(self, int: int) -> ArrayList[_ArrayList__E] \
+                                    # N:     def [_ArrayList__E] __init__(self, int: Union[int, Integer]) -> ArrayList[_ArrayList__E] \
                                     # N:     def [_ArrayList__E] __init__(self, collection: Collection[_ArrayList__E]) -> ArrayList[_ArrayList__E]
 
 
