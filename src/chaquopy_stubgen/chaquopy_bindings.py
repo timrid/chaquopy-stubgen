@@ -80,50 +80,9 @@ _JAVA_OBJ = typing.Union[Primitive, Object]
 JAVA_OBJ_T = typing.TypeVar("JAVA_OBJ_T", bound=_JAVA_OBJ)
 
 class JavaArray(Object, typing.Sequence[JAVA_OBJ_T]):
-    @typing.overload
     def __init__(
         self,
         length_or_value: typing.Union[int, typing.Sequence[JAVA_OBJ_T]],
-    ): ...
-    @typing.overload
-    def __init__(
-        self: JavaArray[jboolean],
-        length_or_value: typing.Union[int, typing.Sequence[bool]],
-    ): ...
-    @typing.overload
-    def __init__(
-        self: JavaArray[jbyte],
-        length_or_value: typing.Union[int, typing.Sequence[int]],
-    ): ...
-    @typing.overload
-    def __init__(
-        self: JavaArray[jshort],
-        length_or_value: typing.Union[int, typing.Sequence[int]],
-    ): ...
-    @typing.overload
-    def __init__(
-        self: JavaArray[jint],
-        length_or_value: typing.Union[int, typing.Sequence[int]],
-    ): ...
-    @typing.overload
-    def __init__(
-        self: JavaArray[jlong],
-        length_or_value: typing.Union[int, typing.Sequence[int]],
-    ): ...
-    @typing.overload
-    def __init__(
-        self: JavaArray[jfloat],
-        length_or_value: typing.Union[int, typing.Sequence[float]],
-    ): ...
-    @typing.overload
-    def __init__(
-        self: JavaArray[jdouble],
-        length_or_value: typing.Union[int, typing.Sequence[float]],
-    ): ...
-    @typing.overload
-    def __init__(
-        self: JavaArray[jchar],
-        length_or_value: typing.Union[int, str],
     ): ...
     def __len__(self): ...
     @typing.overload
@@ -249,6 +208,82 @@ class JavaArray(Object, typing.Sequence[JAVA_OBJ_T]):
     def index(self, value: typing.Any, start: int = 0, stop: int = ...) -> int: ...
     def count(self, value: typing.Any) -> int: ...
 
+
+# inference of correct type is not working, when overloading __init__ with mypy v1.15.0
+class JavaArrayJBoolean(JavaArray[jboolean]):
+    def __init__(
+        self,
+        length_or_value: typing.Union[int, typing.Sequence[bool]],
+    ): ...
+class JavaArrayJByte(JavaArray[jbyte]):
+    def __init__(
+        self,
+        length_or_value: typing.Union[int, typing.Sequence[int]],
+    ): ...
+class JavaArrayJShort(JavaArray[jshort]):
+    def __init__(
+        self,
+        length_or_value: typing.Union[int, typing.Sequence[int]],
+    ): ...
+class JavaArrayJInt(JavaArray[jint]):
+    def __init__(
+        self,
+        length_or_value: typing.Union[int, typing.Sequence[int]],
+    ): ...
+class JavaArrayJLong(JavaArray[jlong]):
+    def __init__(
+        self,
+        length_or_value: typing.Union[int, typing.Sequence[int]],
+    ): ...
+class JavaArrayJFloat(JavaArray[jfloat]):
+    def __init__(
+        self,
+        length_or_value: typing.Union[int, typing.Sequence[float]],
+    ): ...
+class JavaArrayJDouble(JavaArray[jdouble]):
+    def __init__(
+        self,
+        length_or_value: typing.Union[int, typing.Sequence[float]],
+    ): ...
+class JavaArrayJChar(JavaArray[jchar]):
+    def __init__(
+        self,
+        length_or_value: typing.Union[int, typing.Sequence[str]],
+    ): ...
+
+
+@typing.overload
+def jarray(
+    element_type: typing.Type[jboolean],
+) -> typing.Type[JavaArrayJBoolean]: ...
+@typing.overload
+def jarray(
+    element_type: typing.Type[jbyte],
+) -> typing.Type[JavaArrayJByte]: ...
+@typing.overload
+def jarray(
+    element_type: typing.Type[jshort],
+) -> typing.Type[JavaArrayJShort]: ...
+@typing.overload
+def jarray(
+    element_type: typing.Type[jint],
+) -> typing.Type[JavaArrayJInt]: ...
+@typing.overload
+def jarray(
+    element_type: typing.Type[jlong],
+) -> typing.Type[JavaArrayJLong]: ...
+@typing.overload
+def jarray(
+    element_type: typing.Type[jfloat],
+) -> typing.Type[JavaArrayJFloat]: ...
+@typing.overload
+def jarray(
+    element_type: typing.Type[jdouble],
+) -> typing.Type[JavaArrayJDouble]: ...
+@typing.overload
+def jarray(
+    element_type: typing.Type[jchar],
+) -> typing.Type[JavaArrayJChar]: ...
 @typing.overload
 def jarray(
     element_type: typing.Type[JAVA_OBJ_T],
@@ -260,7 +295,6 @@ def jarray(element_type: str) -> typing.Type[JavaArray[typing.Any]]: ...
 def set_import_enabled(enable: bool): ...
 
 # proxy.pxi #######################################################################################
-
 T = typing.TypeVar("T")
 
 @typing.overload

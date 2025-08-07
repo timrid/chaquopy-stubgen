@@ -57,4 +57,5 @@ class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
         "varargs.test",
         "exception.test",
         "type_conversions.test",
+        "jarray.test"
     ]

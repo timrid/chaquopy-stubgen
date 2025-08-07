@@ -542,10 +542,37 @@ def mangle_callable_type_args(
     return [TypeStr("", resolved_param_types), resolved_return_type]
 
 
+@dataclasses.dataclass
+class Primitive:
+    java_primitive: str
+    java_object: str
+    python_primitive: str
+    python_type: str
+
+
+PRIMITIVES: list[Primitive] = [
+    Primitive("void", "java.lang.Void", "java.jvoid", "None"),
+    Primitive("byte", "java.lang.Byte", "java.jbyte", "int"),
+    Primitive("short", "java.lang.Short", "java.jshort", "int"),
+    Primitive("int", "java.lang.Integer", "java.jint", "int"),
+    Primitive("long", "java.lang.Long", "java.jlong", "int"),
+    Primitive("boolean", "java.lang.Boolean", "java.jboolean", "bool"),
+    Primitive("double", "java.lang.Double", "java.jdouble", "float"),
+    Primitive("float", "java.lang.Float", "java.jfloat", "float"),
+    Primitive("char", "java.lang.Character", "java.jchar", "str"),
+]
+
+TYPE_NAME_TO_PRIMITIVE_MAP: dict[str, Primitive] = {
+    **{p.java_primitive: p for p in PRIMITIVES},
+    **{p.java_object: p for p in PRIMITIVES},
+}
+
+
 def translate_type_name(
     type_name: str,
     type_args: list[TypeStr] | None = None,
-    implicit_conversions: bool = False,
+    is_argument: bool = False,
+    is_array_param: bool = False,
 ) -> TypeStr:
     """
     Translate basic Java types to python types. Note that this conversion is applied for ALL types, no matter if they
@@ -576,51 +603,36 @@ def translate_type_name(
 
     """
     union: list[TypeStr] = []
-    if type_name in ("void", "java.lang.Void"):
-        union.append(TypeStr("None"))
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Void"))
-    if type_name in ("byte", "java.lang.Byte"):
-        union.append(TypeStr("int"))
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Byte"))
-    if type_name in ("short", "java.lang.Short"):
-        union.append(TypeStr("int"))
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Short"))
-    if type_name in ("int", "java.lang.Integer"):
-        union.append(TypeStr("int"))
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Integer"))
-    if type_name in ("long", "java.lang.Long"):
-        union.append(TypeStr("int"))
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Long"))
-    if type_name in ("boolean", "java.lang.Boolean"):
-        union.append(TypeStr("bool"))
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Boolean"))
-    if type_name in ("double", "java.lang.Double"):
-        union.append(TypeStr("float"))
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Double"))
-    if type_name in ("float", "java.lang.Float"):
-        union.append(TypeStr("float"))
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Float"))
-    if type_name in ("char", "java.lang.Character"):
-        union.append(TypeStr("str"))  # 1-character string
-        if implicit_conversions:
-            union.append(TypeStr("java.lang.Character"))
+
+    if type_name in TYPE_NAME_TO_PRIMITIVE_MAP:
+        primitive = TYPE_NAME_TO_PRIMITIVE_MAP[type_name]
+        if is_array_param and is_argument:
+            raise ValueError(
+                f"Type {type_name} cannot be both an array parameter and an argument type."
+            )
+
+        if is_array_param:
+            union.append(TypeStr(primitive.python_primitive))
+        else:
+            union.append(TypeStr(primitive.python_type))
+
+        if is_argument:
+            # implicit conversions
+            union.append(TypeStr(primitive.python_primitive))
+            union.append(TypeStr(primitive.java_object))
+
     if type_name == "java.lang.String":
-        union.append(TypeStr("str"))
-        if implicit_conversions:
+        if is_array_param:
             union.append(TypeStr("java.lang.String"))
+        else:
+            union.append(TypeStr("str"))
+            if is_argument:
+                union.append(TypeStr("java.lang.String"))
     if type_name == "java.lang.Class":
         union.append(TypeStr("typing.Type", type_args))
     if type_name == "java.lang.Object":
         union.append(TypeStr("java.lang.Object"))
-        if implicit_conversions:
+        if is_argument:
             union.append(TypeStr("int"))
             union.append(TypeStr("bool"))
             union.append(TypeStr("float"))
@@ -631,44 +643,6 @@ def translate_type_name(
     if len(union) > 1:
         return TypeStr("typing.Union", union)
     return TypeStr(type_name, type_args)
-
-
-def translate_java_array_type(
-    javaType: Any, type_vars: list[TypeVarStr] | None, is_argument: bool
-) -> TypeStr:
-    """
-    Translate a Java array type to python type.
-
-    Java arrays returned by JPype are of type "JArray", but JArray is not generic. To conserve the type
-    information of the elements, we map them to typing.MutableSequence for the time being.
-
-    For arguments, JPype accepts JArray, and it does implicit conversions for Sequences/Lists for all arrays
-    and bytes -> byte[] specifically (these conversions happen by copy).
-
-    >>> translate_java_array_type(jpype.JArray(jpype.JByte).class_, [], False)
-    TypeStr(name='typing.MutableSequence', type_args=[TypeStr(name='int', type_args=[])])
-    >>> translate_java_array_type(jpype.JArray(jpype.JByte).class_, [], True)
-    TypeStr(name='typing.Union', type_args=[TypeStr(name='typing.list', type_args=[TypeStr(name='int', type_args=[])]), TypeStr(name='jpype.JArray', type_args=[]), TypeStr(name='bytes', type_args=[])])
-    >>> translate_java_array_type(jpype.JArray(jpype.java.util.Date).class_, [], True)
-    TypeStr(name='typing.Union', type_args=[TypeStr(name='typing.list', type_args=[TypeStr(name='java.util.Date', type_args=None)]), TypeStr(name='jpype.JArray', type_args=[])])
-    >>> translate_java_array_type(jpype.JArray(jpype.java.util.Date).class_, [], False)
-    TypeStr(name='typing.MutableSequence', type_args=[TypeStr(name='java.util.Date', type_args=None)])
-    """
-    element_type = java_array_component_type(javaType)
-    python_element_type = python_type(element_type, type_vars)
-    if is_argument:
-        union = [
-            TypeStr("typing.List", [python_element_type]),
-            TypeStr("java.jarray"),  # , [TypeStr(str(element_type))]),
-        ]
-        if str(element_type) == "byte":
-            # hack: JPype supports converting bytes/bytearray to byte[] but
-            # this is not advertised in hints...
-            union.append(TypeStr("bytes"))
-        return TypeStr("typing.Union", union)
-    else:
-        # actually JArray, but it is not generic
-        return TypeStr("typing.MutableSequence", [python_element_type])
 
 
 def java_array_component_type(java_type: Any) -> Any:
@@ -686,7 +660,10 @@ def java_array_component_type(java_type: Any) -> Any:
 
 
 def python_type(
-    java_type: Any, type_vars: list[TypeVarStr] | None = None, is_argument: bool = False
+    java_type: Any,
+    type_vars: list[TypeVarStr] | None = None,
+    is_argument: bool = False,
+    is_array_param: bool = False,
 ) -> TypeStr:
     """
     Translate a (possibly generic/parametrized) Java type to a python type, represented as a TypeStr.
@@ -715,10 +692,11 @@ def python_type(
         return translate_type_name(
             str(java_type.getRawType().getTypeName()),
             type_args=[
-                python_type(arg, type_vars, is_argument)
+                python_type(arg, type_vars, is_argument, is_array_param)
                 for arg in java_type.getActualTypeArguments()
             ],
-            implicit_conversions=is_argument,
+            is_argument=is_argument,
+            is_array_param=is_array_param,
         )
     elif isinstance(java_type, TypeVariable):
         j_var_name = str(java_type.getName())
@@ -740,10 +718,14 @@ def python_type(
                 j_bound = j_lower_bounds[0]
         return python_type(j_bound, type_vars)
     elif isinstance(java_type, GenericArrayType) or java_type.isArray():
-        return translate_java_array_type(java_type, type_vars, is_argument=is_argument)
+        element_type = java_array_component_type(java_type)
+        python_element_type = python_type(element_type, type_vars, is_array_param=True)
+        return TypeStr("java.chaquopy.JavaArray", [python_element_type])
     else:
         return translate_type_name(
-            str(java_type.getName()), implicit_conversions=is_argument
+            str(java_type.getName()),
+            is_argument=is_argument,
+            is_array_param=is_array_param,
         )
 
 

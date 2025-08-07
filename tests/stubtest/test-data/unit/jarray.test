@@ -1,0 +1,21 @@
+[case testJavaArrayAsReturnType]
+from java.lang import String
+
+s = String("asdf")
+reveal_type(s)  # N: Revealed type is "java.lang.String"
+reveal_type(s.split("s"))  # N: Revealed type is "java.chaquopy.JavaArray[java.lang.String]"
+reveal_type(s.toCharArray())  # N: Revealed type is "java.chaquopy.JavaArray[java.primitive.jchar]"
+
+[case testJavaArrayAsParameter]
+from java.lang import String
+from java import jarray, jchar, jint, jbyte
+
+char_array = jarray(jchar)(["a", "b", "c"])
+byte_array = jarray(jbyte)([55, 66, 77])
+int_array = jarray(jint)([55555, 66, 77])
+reveal_type(char_array)  # N: Revealed type is "java.chaquopy.JavaArrayJChar"
+reveal_type(byte_array)  # N: Revealed type is "java.chaquopy.JavaArrayJByte"
+reveal_type(int_array)  # N: Revealed type is "java.chaquopy.JavaArrayJInt"
+String(char_array)
+String(byte_array)
+String(int_array)  # E: Argument 1 to "String" has incompatible type "JavaArrayJInt"; expected "JavaArray[jbyte]"
