@@ -31,14 +31,14 @@ Authors:
 
 import collections
 import dataclasses
-import functools
-import pathlib
-import re
-from typing import Any, Union, Generator
-
-import jpype
 import keyword
 import logging
+import pathlib
+import re
+from typing import Any, Generator, Union
+
+import jpype
+
 from chaquopy_stubgen.chaquopy_bindings import add_chaquopy_bindings_to_java_package
 
 log = logging.getLogger(__name__)
@@ -777,9 +777,9 @@ def python_type_var(java_type: Any, uniq_scope_id: str) -> TypeVarStr:
         raise RuntimeError(
             f"Can not convert to type var {str(java_type)} ({repr(java_type)})"
         )
-    bound = python_type(java_type_variable_bound(java_type))
-    if bound.name == "java.lang.Object":
-        bound = None  # unbounded
+    bound: TypeStr | None = python_type(java_type_variable_bound(java_type))
+    if bound and bound.name == "java.lang.Object":
+        bound = None
     java_name = str(java_type.getName())
     return TypeVarStr(
         java_name=java_name, python_name=f"_{uniq_scope_id}__{java_name}", bound=bound
@@ -910,7 +910,7 @@ def split_method_overload_javadoc(
     javadoc_lines = javadoc.split("\n")
     line = 0
     signature_index = None
-    out_lines = [[] for _ in signatures]
+    out_lines: list[list[str]] = [[] for _ in signatures]
 
     while line < len(javadoc_lines):
         javadoc_line = javadoc_lines[line]
@@ -1009,8 +1009,9 @@ def generate_java_method_stub(
             output.append("@typing.overload")
         if signature.static:
             output.append("@staticmethod")
-        sig = []
+        sig: list[str] = []
         for i, arg in enumerate(signature.args):
+            arg_def: str | None
             if arg.name == "self":
                 arg_def = arg.name
             else:
