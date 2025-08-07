@@ -634,7 +634,7 @@ def translate_type_name(
 
 
 def translate_java_array_type(
-    javaType: Any, typeVars: list[TypeVarStr] | None, is_argument: bool
+    javaType: Any, type_vars: list[TypeVarStr] | None, is_argument: bool
 ) -> TypeStr:
     """
     Translate a Java array type to python type.
@@ -655,7 +655,7 @@ def translate_java_array_type(
     TypeStr(name='typing.MutableSequence', type_args=[TypeStr(name='java.util.Date', type_args=None)])
     """
     element_type = java_array_component_type(javaType)
-    python_element_type = python_type(element_type, typeVars)
+    python_element_type = python_type(element_type, type_vars)
     if is_argument:
         union = [
             TypeStr("typing.List", [python_element_type]),
