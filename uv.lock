@@ -8,23 +8,19 @@ dependencies = [
     { name = "jpype1" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
-    { name = "mypy" },
-    { name = "pytest" },
-]
-test = [
     { name = "mypy" },
     { name = "pytest" },
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "jpype1", specifier = ">=1.6.0,<2" },
-    { name = "mypy", marker = "extra == 'dev'", specifier = "==1.15.0" },
-    { name = "mypy", marker = "extra == 'test'" },
-    { name = "pytest", marker = "extra == 'dev'" },
-    { name = "pytest", marker = "extra == 'test'" },
+requires-dist = [{ name = "jpype1", specifier = ">=1.6.0,<2" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = "==1.15.0" },
+    { name = "pytest" },
 ]
 
 [[package]]

@@ -31,14 +31,10 @@ dependencies = [
 ]
 dynamic = ["version"]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "pytest",
     "mypy==1.15.0",
-]
-test = [
-    "pytest",
-    "mypy",
 ]
 
 [tool.setuptools_scm]

@@ -190,12 +190,7 @@ def generate_java_stubs(
 
 
 def filter_class_names_in_package(package_name: str, types: set[str]) -> set[str]:
-    """From the provided list of class names, filter and return those which are DIRECT descendants of the package
-
-    >>> sorted(filterClassNamesInPackage('cern.package', {'cern.package.Test', 'cern.package.subpackage.Test', 'cern.package.Test$Inner', 'cern.Class', 'cern.package.Class'}))
-    ['Class', 'Test']
-
-    """
+    """From the provided list of class names, filter and return those which are DIRECT descendants of the package"""
     local_types: set[str] = set()
     for typ in types:
         type_package, _, local_name = typ.rpartition(".")
@@ -353,23 +348,7 @@ def simple_class_name_of(j_class: jpype.JClass) -> str:
 
 
 def is_java_class(obj: type) -> bool:
-    """Check if a type is a 'real' Java class. This excludes synthetic/anonymous Java classes.
-
-    >>> import java.lang.Object
-    >>> is_java_class(java.lang.Object)
-    True
-    >>> import java.util.list
-    >>> is_java_class(java.util.list)
-    True
-    >>> import java.util
-    >>> is_java_class(java.util)
-    False
-    >>> is_java_class(str)
-    False
-    >>> is_java_class(list)
-    False
-
-    """
+    """Check if a type is a 'real' Java class. This excludes synthetic/anonymous Java classes."""
     if not isinstance(obj, jpype.JClass) or not hasattr(obj, "class_"):
         return False
     if (
@@ -411,28 +390,7 @@ def dependencies_satisfied(
 
 
 def java_super_types(j_class: jpype.JClass) -> list[Any]:
-    """Get all supertypes of the provided Java class, up to java.lang.Object
-
-    >>> import java.lang.Object
-    >>> for t in java_super_types(java.lang.Object): print(t)
-    ...
-    >>> import java.lang.Class
-    >>> for t in java_super_types(java.lang.Class): print(t)
-    ...
-    interface java.io.Serializable
-    interface java.lang.reflect.GenericDeclaration
-    interface java.lang.reflect.Type
-    interface java.lang.reflect.AnnotatedElement
-    >>> import java.util.ArrayList
-    >>> for t in java_super_types(java.util.ArrayList): print(t)
-    ...
-    java.util.AbstractList<E>
-    java.util.list<E>
-    interface java.util.RandomAccess
-    interface java.lang.Cloneable
-    interface java.io.Serializable
-
-    """
+    """Get all supertypes of the provided Java class, up to java.lang.Object"""
     super_types = [j_class.class_.getGenericSuperclass()] + list(
         j_class.class_.getGenericInterfaces()
     )
@@ -587,20 +545,6 @@ def translate_type_name(
 
     Additionally, implicitConversions=True indicates that the type is used as METHOD ARGUMENT. In this case we also
     apply the mangling by handleImplicitConversions() to account for JPype implicit type conversions.
-
-    >>> translate_type_name('java.util.Collection', [TypeStr('str')])
-    TypeStr(name='java.util.Collection', type_args=[TypeStr(name='str', type_args=[])])
-    >>> translate_type_name('java.util.Collection', [TypeStr('str')], implicitConversions=True)
-    TypeStr(name='typing.Union', type_args=[TypeStr(name='java.util.Collection', type_args=[TypeStr(name='str', type_args=[])]), TypeStr(name='typing.Sequence', type_args=[TypeStr(name='str', type_args=[])]), TypeStr(name='typing.set', type_args=[TypeStr(name='str', type_args=[])])])
-    >>> translate_type_name('java.lang.Object')
-    TypeStr(name='typing.Any', type_args=[])
-    >>> translate_type_name('java.lang.Class', [TypeStr('java.util.list')])
-    TypeStr(name='typing.Type', type_args=[TypeStr(name='java.util.list', type_args=[])])
-    >>> translate_type_name('void')
-    TypeStr(name='None', type_args=[])
-    >>> translate_type_name('java.lang.Integer')
-    TypeStr(name='int', type_args=[])
-
     """
     union: list[TypeStr] = []
 
