@@ -8,12 +8,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chaquopy-stubgen"
-description = "PEP-484 python stub generator for Java classes accessed through Chaquopy on Android"
+description = "PEP484 python stub generator for Java classes accessed through Chaquopy on Android"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.13"
 keywords = [
-    "stubgenj",
+    "stubgen",
     "JPype",
     "Python",
     "Java",
@@ -21,6 +21,7 @@ keywords = [
     "Beeware",
     "briefcase",
     "Android",
+    "PEP484"
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

@@ -36,7 +36,6 @@ def test_generate_stubs(stub_tmpdir: Path):
 
     chaquopy_stubgen.generate_java_stubs(
         [java],  # type: ignore
-        use_stubs_suffix=True,
         output_dir=stub_tmpdir,
     )
 

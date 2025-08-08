@@ -1,5 +1,5 @@
 """chaquopy-stubgen
-A PEP-484 python stub generator for Java modules using the Chaquopy import system.
+A PEP484 python stub generator for Java modules using the Chaquopy import system.
 Originally based on mypy stubgenc and stubgenj.
 
 Copyright (c) CERN 2020-2021
@@ -132,7 +132,6 @@ def package_and_sub_packages(
 
 def generate_java_stubs(
     parent_packages: list[jpype.JPackage],
-    use_stubs_suffix: bool = True,
     output_dir: Union[str, pathlib.Path] = ".",
     include_javadoc: bool = True,
 ) -> None:
@@ -163,7 +162,7 @@ def generate_java_stubs(
         submodule_path = output_path
         submodule_name = ""
         for pkg_part in pkg_parts:
-            if not submodule_name and use_stubs_suffix:
+            if not submodule_name:
                 submodule_path = submodule_path / f"{pkg_part}-stubs"
             else:
                 submodule_path = submodule_path / pkg_part
