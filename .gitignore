@@ -206,3 +206,4 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 src/chaquopy_stubgen/_version.py
+output

@@ -10,7 +10,8 @@
             "request": "launch",
             "module": "chaquopy_stubgen",
             "console": "integratedTerminal",
-            "args": "java --classpath ../chaquopy-stubs/android-35.jar --output-dir ../chaquopy-stubs/.venv/Lib/site-packages/"
+            "args": "java android --classpath ../chaquopy-stubs/android-35.jar --output-dir ./output"
+            // "args": "java --classpath ../chaquopy-stubs/android-35.jar --output-dir ../chaquopy-stubs/.venv/Lib/site-packages/"
         }
     ]
 }

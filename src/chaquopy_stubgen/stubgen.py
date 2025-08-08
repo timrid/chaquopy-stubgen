@@ -589,6 +589,32 @@ def translate_type_name(
     return TypeStr(type_name, type_args)
 
 
+PARAMETER_TO_ARRAY_TYPE_MAP: dict[str, str] = {
+    "java.jboolean": "java.chaquopy.JavaArrayJBoolean",
+    "java.jbyte": "java.chaquopy.JavaArrayJByte",
+    "java.jshort": "java.chaquopy.JavaArrayJShort",
+    "java.jint": "java.chaquopy.JavaArrayJInt",
+    "java.jlong": "java.chaquopy.JavaArrayJLong",
+    "java.jfloat": "java.chaquopy.JavaArrayJFloat",
+    "java.jdouble": "java.chaquopy.JavaArrayJDouble",
+    "java.jchar": "java.chaquopy.JavaArrayJChar",
+}
+
+
+def translate_java_array_type(
+    java_type: Any, type_vars: list[TypeVarStr] | None, is_argument: bool
+) -> TypeStr:
+    """
+    Translate a Java array type to python type.
+    """
+    element_type = java_array_component_type(java_type)
+    python_element_type = python_type(element_type, type_vars, is_array_param=True)
+
+    if python_element_type.name in PARAMETER_TO_ARRAY_TYPE_MAP:
+        return TypeStr(PARAMETER_TO_ARRAY_TYPE_MAP[python_element_type.name])
+    return TypeStr("java.chaquopy.JavaArray", [python_element_type])
+
+
 def java_array_component_type(java_type: Any) -> Any:
     """
     Get the component type of a java array type (parametrized type for generic arrays, otherwise "standard" type)
@@ -662,9 +688,7 @@ def python_type(
                 j_bound = j_lower_bounds[0]
         return python_type(j_bound, type_vars)
     elif isinstance(java_type, GenericArrayType) or java_type.isArray():
-        element_type = java_array_component_type(java_type)
-        python_element_type = python_type(element_type, type_vars, is_array_param=True)
-        return TypeStr("java.chaquopy.JavaArray", [python_element_type])
+        return translate_java_array_type(java_type, type_vars, is_argument=is_argument)
     else:
         return translate_type_name(
             str(java_type.getName()),

@@ -4,7 +4,7 @@ from java.lang import String
 s = String("asdf")
 reveal_type(s)  # N: Revealed type is "java.lang.String"
 reveal_type(s.split("s"))  # N: Revealed type is "java.chaquopy.JavaArray[java.lang.String]"
-reveal_type(s.toCharArray())  # N: Revealed type is "java.chaquopy.JavaArray[java.primitive.jchar]"
+reveal_type(s.toCharArray())  # N: Revealed type is "java.chaquopy.JavaArrayJChar"
 
 [case testJavaArrayAsParameter]
 from java.lang import String
@@ -18,4 +18,20 @@ reveal_type(byte_array)  # N: Revealed type is "java.chaquopy.JavaArrayJByte"
 reveal_type(int_array)  # N: Revealed type is "java.chaquopy.JavaArrayJInt"
 String(char_array)
 String(byte_array)
-String(int_array)  # E: Argument 1 to "String" has incompatible type "JavaArrayJInt"; expected "JavaArray[jbyte]"
+String(int_array)  # E: No overload variant of "String" matches argument type "JavaArrayJInt" \
+                   # N: Possible overload variants: \
+                   # N:     def __init__(self) -> String \
+                   # N:     def __init__(self, byteArray: JavaArrayJByte) -> String \
+                   # N:     def __init__(self, byteArray: JavaArrayJByte, int: Union[int, jint, Integer]) -> String \
+                   # N:     def __init__(self, byteArray: JavaArrayJByte, int: Union[int, jint, Integer], int2: Union[int, jint, Integer]) -> String \
+                   # N:     def __init__(self, byteArray: JavaArrayJByte, int: Union[int, jint, Integer], int2: Union[int, jint, Integer], int3: Union[int, jint, Integer]) -> String \
+                   # N:     def __init__(self, byteArray: JavaArrayJByte, int: Union[int, jint, Integer], int2: Union[int, jint, Integer], string: Union[str, String]) -> String \
+                   # N:     def __init__(self, byteArray: JavaArrayJByte, int: Union[int, jint, Integer], int2: Union[int, jint, Integer], charset: Charset) -> String \
+                   # N:     def __init__(self, byteArray: JavaArrayJByte, string: Union[str, String]) -> String \
+                   # N:     def __init__(self, byteArray: JavaArrayJByte, charset: Charset) -> String \
+                   # N:     def __init__(self, charArray: JavaArrayJChar) -> String \
+                   # N:     def __init__(self, charArray: JavaArrayJChar, int: Union[int, jint, Integer], int2: Union[int, jint, Integer]) -> String \
+                   # N:     def __init__(self, intArray: JavaArrayJInt, int2: Union[int, jint, Integer], int3: Union[int, jint, Integer]) -> String \
+                   # N:     def __init__(self, string: Union[str, String]) -> String \
+                   # N:     def __init__(self, stringBuffer: StringBuffer) -> String \
+                   # N:     def __init__(self, stringBuilder: StringBuilder) -> String
