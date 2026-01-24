@@ -6,10 +6,10 @@ This is based on [stubgenj](https://gitlab.cern.ch/scripting-tools/stubgenj). Al
 The generated stubs can be used with Python 3.8 or higher.
 
 # CLI Usage
-Example call `python -m chaquopy_stubgen java android --classpath android.jar`
+Example call `uv run -m chaquopy_stubgen java android --classpath "$ANDROID_HOME/platforms/android-35/android.jar" --output-dir dist`
 
 ```
-$ python -m chaquopy_stubgen --help
+$ uv run -m chaquopy_stubgen --help
 usage: __main__.py [-h] [--jvmpath JVMPATH] [--classpath CLASSPATH] [--output-dir OUTPUT_DIR] [--no-javadoc] prefixes [prefixes ...]
 
 Generate Python Type Stubs for Java classes that are optimized for chaquopy.
