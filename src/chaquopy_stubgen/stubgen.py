@@ -530,6 +530,7 @@ def translate_type_name(
     type_args: list[TypeStr] | None = None,
     is_argument: bool = False,
     is_array_param: bool = False,
+    is_super_type: bool = False,
 ) -> TypeStr:
     """
     Translate basic Java types to python types. Note that this conversion is applied for ALL types, no matter if they
@@ -564,28 +565,34 @@ def translate_type_name(
             union.append(TypeStr(primitive.python_primitive))
             union.append(TypeStr(primitive.java_object))
 
-    if type_name == "java.lang.String":
+    elif type_name == "java.lang.String":
         if is_array_param:
             union.append(TypeStr("java.lang.String"))
         else:
             union.append(TypeStr("str"))
             if is_argument:
                 union.append(TypeStr("java.lang.String"))
-    if type_name == "java.lang.Class":
+    elif type_name == "java.lang.Class":
         union.append(TypeStr("typing.Type", type_args))
-    if type_name == "java.lang.Object":
+    elif type_name == "java.lang.Object":
         union.append(TypeStr("java.lang.Object"))
         if is_argument:
             union.append(TypeStr("int"))
             union.append(TypeStr("bool"))
             union.append(TypeStr("float"))
             union.append(TypeStr("str"))
+    else:
+        # this is a reference type an can be null
+        union.append(TypeStr(type_name, type_args))
+        if not is_super_type:
+            # super types cannot be null in Java - do not add None to the union
+            union.append(TypeStr("None"))
 
     if len(union) == 1:
         return TypeStr(union[0].name, union[0].type_args)
-    if len(union) > 1:
+    elif len(union) > 1:
         return TypeStr("typing.Union", union)
-    return TypeStr(type_name, type_args)
+    raise ValueError(f"Could not translate type name {type_name}")
 
 
 PARAMETER_TO_ARRAY_TYPE_MAP: dict[str, str] = {
@@ -633,6 +640,7 @@ def python_type(
     type_vars: list[TypeVarStr] | None = None,
     is_argument: bool = False,
     is_array_param: bool = False,
+    is_super_type: bool = False,
 ) -> TypeStr:
     """
     Translate a (possibly generic/parametrized) Java type to a python type, represented as a TypeStr.
@@ -666,6 +674,7 @@ def python_type(
             ],
             is_argument=is_argument,
             is_array_param=is_array_param,
+            is_super_type=is_super_type,
         )
     elif isinstance(java_type, TypeVariable):
         j_var_name = str(java_type.getName())
@@ -693,6 +702,7 @@ def python_type(
             str(java_type.getName()),
             is_argument=is_argument,
             is_array_param=is_array_param,
+            is_super_type=is_super_type,
         )
 
 
@@ -1357,7 +1367,7 @@ def generate_java_class_stub(
     for super_type in java_super_types(j_class):
         super_types.append(
             to_annotated_type(
-                python_type(super_type, usable_type_vars),
+                python_type(super_type, usable_type_vars, is_super_type=True),
                 package_name,
                 classes_done,
                 classes_used,
