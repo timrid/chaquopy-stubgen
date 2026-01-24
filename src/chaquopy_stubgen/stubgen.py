@@ -505,18 +505,19 @@ class Primitive:
     java_object: str
     python_primitive: str
     python_type: str
+    array_type: str | None
 
 
 PRIMITIVES: list[Primitive] = [
-    Primitive("void", "java.lang.Void", "java.jvoid", "None"),
-    Primitive("byte", "java.lang.Byte", "java.jbyte", "int"),
-    Primitive("short", "java.lang.Short", "java.jshort", "int"),
-    Primitive("int", "java.lang.Integer", "java.jint", "int"),
-    Primitive("long", "java.lang.Long", "java.jlong", "int"),
-    Primitive("boolean", "java.lang.Boolean", "java.jboolean", "bool"),
-    Primitive("double", "java.lang.Double", "java.jdouble", "float"),
-    Primitive("float", "java.lang.Float", "java.jfloat", "float"),
-    Primitive("char", "java.lang.Character", "java.jchar", "str"),
+    Primitive("void", "java.lang.Void", "java.jvoid", "None", None),
+    Primitive("byte", "java.lang.Byte", "java.jbyte", "int", "java.chaquopy.JavaArrayJByte"),
+    Primitive("short", "java.lang.Short", "java.jshort", "int", "java.chaquopy.JavaArrayJShort"),
+    Primitive("int", "java.lang.Integer", "java.jint", "int", "java.chaquopy.JavaArrayJInt"),
+    Primitive("long", "java.lang.Long", "java.jlong", "int", "java.chaquopy.JavaArrayJLong"),
+    Primitive("boolean", "java.lang.Boolean", "java.jboolean", "bool", "java.chaquopy.JavaArrayJBoolean"),
+    Primitive("double", "java.lang.Double", "java.jdouble", "float", "java.chaquopy.JavaArrayJDouble"),
+    Primitive("float", "java.lang.Float", "java.jfloat", "float", "java.chaquopy.JavaArrayJFloat"),
+    Primitive("char", "java.lang.Character", "java.jchar", "str", "java.chaquopy.JavaArrayJChar"),
 ]
 
 TYPE_NAME_TO_PRIMITIVE_MAP: dict[str, Primitive] = {
@@ -595,15 +596,8 @@ def translate_type_name(
     raise ValueError(f"Could not translate type name {type_name}")
 
 
-PARAMETER_TO_ARRAY_TYPE_MAP: dict[str, str] = {
-    "java.jboolean": "java.chaquopy.JavaArrayJBoolean",
-    "java.jbyte": "java.chaquopy.JavaArrayJByte",
-    "java.jshort": "java.chaquopy.JavaArrayJShort",
-    "java.jint": "java.chaquopy.JavaArrayJInt",
-    "java.jlong": "java.chaquopy.JavaArrayJLong",
-    "java.jfloat": "java.chaquopy.JavaArrayJFloat",
-    "java.jdouble": "java.chaquopy.JavaArrayJDouble",
-    "java.jchar": "java.chaquopy.JavaArrayJChar",
+PYTHON_PRIMITIVE_PRIMITIVE_MAP: dict[str, Primitive] = {
+    **{p.python_primitive: p for p in PRIMITIVES},
 }
 
 
@@ -616,9 +610,24 @@ def translate_java_array_type(
     element_type = java_array_component_type(java_type)
     python_element_type = python_type(element_type, type_vars, is_array_param=True)
 
-    if python_element_type.name in PARAMETER_TO_ARRAY_TYPE_MAP:
-        return TypeStr(PARAMETER_TO_ARRAY_TYPE_MAP[python_element_type.name])
-    return TypeStr("java.chaquopy.JavaArray", [python_element_type])
+    union: list[TypeStr] = []
+    primitive = PYTHON_PRIMITIVE_PRIMITIVE_MAP.get(python_element_type.name)
+    if primitive is not None and primitive.array_type is not None:
+        union.append(TypeStr(primitive.array_type))
+        if is_argument:
+            union.append(
+                TypeStr("typing.Sequence", [TypeStr(primitive.python_type)])
+            )
+    else:
+        union.append(TypeStr("java.chaquopy.JavaArray", [python_element_type]))
+        if is_argument:
+            union.append(TypeStr("typing.Sequence", [python_element_type]))
+
+    if len(union) == 1:
+        return TypeStr(union[0].name, union[0].type_args)
+    elif len(union) > 1:
+        return TypeStr("typing.Union", union)
+    raise ValueError(f"Could not translate type name {python_element_type.name}")
 
 
 def java_array_component_type(java_type: Any) -> Any:
