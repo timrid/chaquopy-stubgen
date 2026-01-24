@@ -6,7 +6,7 @@ This is based on [stubgenj](https://gitlab.cern.ch/scripting-tools/stubgenj). Al
 The generated stubs can be used with Python 3.8 or higher.
 
 # CLI Usage
-Example call `python -m chaquopy_stubgen java android --classpath android.jar`
+Example call `python -m chaquopy_stubgen java android --classpath tests/android-35.jar --output-dir dist`
 
 ```
 $ python -m chaquopy_stubgen --help
