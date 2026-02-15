@@ -22,11 +22,13 @@ ANDROID_JAR = Path(__file__).parent / "android-35.jar"
 def jvm():
     import jpype  # type: ignore
 
-    if not jpype.isJVMStarted():
-        jpype.startJVM(None, classpath=[ANDROID_JAR], convertStrings=True)  # type: ignore
+    jpype.startJVM(None, classpath=[ANDROID_JAR], convertStrings=True)  # type: ignore
     import jpype.imports  # type: ignore
 
-    yield jpype
+    try:
+       yield jpype
+    finally:
+        jpype.shutdownJVM()
 
 @pytest.fixture(scope="session")
 def stub_dir(jvm) -> Generator[Path, None, None]:
