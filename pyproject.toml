@@ -35,7 +35,7 @@ dynamic = ["version"]
 [dependency-groups]
 dev = [
     "pytest",
-    "mypy==1.15.0",
+    "mypy==1.19.1",
 ]
 
 [tool.setuptools_scm]
