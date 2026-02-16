@@ -49,7 +49,7 @@ class MyClass(static_proxy()):  # type: ignore[misc]
     def add(self, a, b):
         return a + b
 """
-    expected_mypy_output = {
+    expected_mypy_output: dict[str, str | list[str]] = {
         "*1": 'error: List item 0 has incompatible type "type[int]"; expected "type[Primitive] | type[Object]"',
         "*2": [
             'error: List item 0 has incompatible type "type[float]"; expected "type[Primitive] | type[Object]"',
