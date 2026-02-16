@@ -1,6 +1,6 @@
-
-from .conftest import run_mypy
 from pathlib import Path
+
+from .mypy_helper import run_and_assert_mypy
 
 
 def test_argument_type_declaration(stub_dir: Path, mypy_project_dir: Path):
@@ -11,15 +11,11 @@ if typing.TYPE_CHECKING:
     import java.util
 
 def foo(arg: "java.util.Formatter"):
-    reveal_type(arg)
+    reveal_type(arg)  # *1
 """
 
-    run_mypy(
-        mypy_project_dir,
-        stub_dir,
-        code,
-        expected_stdout="""\
-testfile.py:7: note: Revealed type is "java.util.Formatter"
-Success: no issues found in 1 source file
-""",
-    )
+    expected_mypy_output = {
+        "*1": 'note: Revealed type is "java.util.Formatter"',
+    }
+
+    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)

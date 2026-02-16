@@ -1,5 +1,6 @@
-from .conftest import run_mypy
 from pathlib import Path
+
+from .mypy_helper import run_and_assert_mypy
 
 
 def test_varargs_ints(stub_dir: Path, mypy_project_dir: Path):
@@ -7,18 +8,14 @@ def test_varargs_ints(stub_dir: Path, mypy_project_dir: Path):
 from java.util import Arrays
 
 java_list = Arrays.asList(5, 23, 42)
-reveal_type(java_list)
+reveal_type(java_list)  # *1
 """
 
-    run_mypy(
-        mypy_project_dir,
-        stub_dir,
-        code,
-        expected_stdout="""\
-testfile.py:4: note: Revealed type is "java.util.List[builtins.int]"
-Success: no issues found in 1 source file
-""",
-    )
+    expected_mypy_output = {
+        "*1": 'note: Revealed type is "java.util.List[builtins.int]"',
+    }
+
+    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
 
 
 def test_varargs_strings(stub_dir: Path, mypy_project_dir: Path):
@@ -26,18 +23,14 @@ def test_varargs_strings(stub_dir: Path, mypy_project_dir: Path):
 from java.util import Arrays
 
 java_list = Arrays.asList('test', 'foo')
-reveal_type(java_list)
+reveal_type(java_list)  # *1
 """
 
-    run_mypy(
-        mypy_project_dir,
-        stub_dir,
-        code,
-        expected_stdout="""\
-testfile.py:4: note: Revealed type is "java.util.List[builtins.str]"
-Success: no issues found in 1 source file
-""",
-    )
+    expected_mypy_output = {
+        "*1": 'note: Revealed type is "java.util.List[builtins.str]"',
+    }
+
+    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
 
 
 def test_varargs_mixed(stub_dir: Path, mypy_project_dir: Path):
@@ -45,16 +38,11 @@ def test_varargs_mixed(stub_dir: Path, mypy_project_dir: Path):
 from java.util import Arrays
 
 java_list = Arrays.asList('life', 'universe', 'everything', 42)
-reveal_type(java_list)
+reveal_type(java_list)  # *1
 """
 
-    run_mypy(
-        mypy_project_dir,
-        stub_dir,
-        code,
-        expected_stdout="""\
-testfile.py:4: note: Revealed type is "java.util.List[builtins.object]"
-Success: no issues found in 1 source file
-""",
-    )
+    expected_mypy_output = {
+        "*1": 'note: Revealed type is "java.util.List[builtins.object]"',
+    }
 
+    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)

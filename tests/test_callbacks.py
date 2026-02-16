@@ -1,5 +1,6 @@
-from .conftest import run_mypy
 from pathlib import Path
+
+from .mypy_helper import run_and_assert_mypy
 
 
 def test_bifunction_callback(stub_dir: Path, mypy_project_dir: Path):
@@ -47,28 +48,22 @@ java_map.put("world", 42.0)
 java_map.forEach(PyBiConsumer(valid_for_each_cb))
 java_map.forEach(
     PyBiConsumer(
-        invalid_for_each_cb_1
+        invalid_for_each_cb_1  # *1
     )
 )
 java_map.forEach(
     PyBiConsumer(
-        invalid_for_each_cb_2
+        invalid_for_each_cb_2  # *2
     )
 )
 """
 
-    run_mypy(
-        mypy_project_dir,
-        stub_dir,
-        code,
-        expected_stdout="""\
-testfile.py:44: error: Argument 1 to "PyBiConsumer" has incompatible type "Callable[[str, str], None]"; expected "Callable[[str, float], None]"  [arg-type]
-testfile.py:49: error: Argument 1 to "PyBiConsumer" has incompatible type "Callable[[str], None]"; expected "Callable[[str, float], None]"  [arg-type]
-Found 2 errors in 1 file (checked 1 source file)
-""",
-        expected_returncode=1,
-    )
+    expected_mypy_output = {
+        "*1": 'error: Argument 1 to "PyBiConsumer" has incompatible type "Callable[[str, str], None]"; expected "Callable[[str, float], None]"',
+        "*2": 'error: Argument 1 to "PyBiConsumer" has incompatible type "Callable[[str], None]"; expected "Callable[[str, float], None]"',
+    }
 
+    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
 
 
 def test_predicate_callback(stub_dir: Path, mypy_project_dir: Path):
@@ -119,33 +114,28 @@ java_list.add("2")
 java_list.removeIf(PyPredicate(valid_predicate))
 java_list.removeIf(
     PyPredicate(
-        invalid_predicate_1
+        invalid_predicate_1  # *1
     )
 )
 java_list.removeIf(
     PyPredicate(
-        invalid_predicate_2
+        invalid_predicate_2  # *2
     )
 )
 java_list.removeIf(
     PyPredicate(
-        invalid_predicate_3
+        invalid_predicate_3  # *3
     )
 )
 """
 
-    run_mypy(
-        mypy_project_dir,
-        stub_dir,
-        code,
-        expected_stdout="""\
-testfile.py:47: error: Argument 1 to "PyPredicate" has incompatible type "Callable[[], bool]"; expected "Callable[[str], bool]"  [arg-type]
-testfile.py:52: error: Argument 1 to "PyPredicate" has incompatible type "Callable[[int], bool]"; expected "Callable[[str], bool]"  [arg-type]
-testfile.py:57: error: Argument 1 to "PyPredicate" has incompatible type "Callable[[str], int]"; expected "Callable[[str], bool]"  [arg-type]
-Found 3 errors in 1 file (checked 1 source file)
-""",
-        expected_returncode=1,
-    )
+    expected_mypy_output = {
+        "*1": 'error: Argument 1 to "PyPredicate" has incompatible type "Callable[[], bool]"; expected "Callable[[str], bool]"',
+        "*2": 'error: Argument 1 to "PyPredicate" has incompatible type "Callable[[int], bool]"; expected "Callable[[str], bool]"',
+        "*3": 'error: Argument 1 to "PyPredicate" has incompatible type "Callable[[str], int]"; expected "Callable[[str], bool]"',
+    }
+
+    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
 
 
 def test_stream_chaining_and_type_inference(stub_dir: Path, mypy_project_dir: Path):
@@ -212,46 +202,40 @@ java_list.add("1")
 java_list.add("2")
 
 str_stream = java_list.stream()
-reveal_type(str_stream)
+reveal_type(str_stream)  # *1
 
 int_stream = str_stream.map(PyFunction(map_str_to_int))
-reveal_type(int_stream)
+reveal_type(int_stream)  # *2
 
 int_stream.filter(
     PyPredicate(
-        str_predicate
+        str_predicate  # *3
     )
 )
 
 int_stream_2 = int_stream.filter(PyPredicate(int_predicate))
-reveal_type(int_stream_2)
+reveal_type(int_stream_2)  # *4
 
 int_stream_2.map(
     PyFunction(
-        map_atomicint_to_bool
+        map_atomicint_to_bool  # *5
     )
 )
 
 atomicint_stream = int_stream_2.map(PyFunction(map_int_to_atomicint))
 java_set = atomicint_stream.collect(Collectors.toSet())
 reveal_type(
-    java_set
+    java_set  # *6
 )
 """
 
-    run_mypy(
-        mypy_project_dir,
-        stub_dir,
-        code,
-        expected_stdout="""\
-testfile.py:63: note: Revealed type is "java.util.stream.Stream[builtins.str]"
-testfile.py:66: note: Revealed type is "java.util.stream.Stream[builtins.int]"
-testfile.py:70: error: Argument 1 to "PyPredicate" has incompatible type "Callable[[str], bool]"; expected "Callable[[int], bool]"  [arg-type]
-testfile.py:75: note: Revealed type is "java.util.stream.Stream[builtins.int]"
-testfile.py:79: error: Argument 1 to "PyFunction" has incompatible type "Callable[[AtomicInteger], bool]"; expected "Callable[[int], bool]"  [arg-type]
-testfile.py:86: note: Revealed type is "java.util.Set[java.util.concurrent.atomic.AtomicInteger]"
-Found 2 errors in 1 file (checked 1 source file)
-""",
-        expected_returncode=1,
-    )
+    expected_mypy_output = {
+        "*1": 'note: Revealed type is "java.util.stream.Stream[builtins.str]"',
+        "*2": 'note: Revealed type is "java.util.stream.Stream[builtins.int]"',
+        "*3": 'error: Argument 1 to "PyPredicate" has incompatible type "Callable[[str], bool]"; expected "Callable[[int], bool]"',
+        "*4": 'note: Revealed type is "java.util.stream.Stream[builtins.int]"',
+        "*5": 'error: Argument 1 to "PyFunction" has incompatible type "Callable[[AtomicInteger], bool]"; expected "Callable[[int], bool]"',
+        "*6": 'note: Revealed type is "java.util.Set[java.util.concurrent.atomic.AtomicInteger]"',
+    }
 
+    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
