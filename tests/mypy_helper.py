@@ -141,15 +141,30 @@ def assert_mypy_json_output(
     # Compare the expected output with the actual mypy messages for each marked line
     for marker, line in marked_lines.items():
         expected_msgs = expected_output[marker]
-        mypy_msgs: list[MypyMessage] | None = result_by_line.pop(line)
-        assert mypy_msgs is not None and len(mypy_msgs) > 0
+        mypy_msgs: list[MypyMessage] | None = result_by_line.pop(line, None)
+        assert mypy_msgs is not None and len(mypy_msgs) > 0, f"Expected mypy messages for marker {marker} on line {line}, but found none."
 
         if isinstance(expected_msgs, str):
             expected_msgs = [expected_msgs]
 
+        # Check that the number of expected and actual messages match
+        if len(expected_msgs) != len(mypy_msgs):
+            actual_msgs_formatted = "\n".join(f"  - {_format_mypy_msg(msg)}" for msg in mypy_msgs)
+            expected_msgs_formatted = "\n".join(f"  - {msg}" for msg in expected_msgs)
+            assert False, (
+                f"Number of mypy messages mismatch for marker {marker} on line {line}:\n"
+                f"Expected {len(expected_msgs)} message(s):\n{expected_msgs_formatted}\n"
+                f"But got {len(mypy_msgs)} message(s):\n{actual_msgs_formatted}"
+            )
+
         for expected_msg, msg in zip(expected_msgs, mypy_msgs, strict=True):
-            actual_msg = _format_mypy_msg(msg)
-            assert expected_msg.strip() == actual_msg.strip()
+            actual_msg = _format_mypy_msg(msg).strip()
+            expected_msg = expected_msg.strip()
+            assert expected_msg == actual_msg, (
+                f"Mypy message mismatch for marker {marker} on line {line}:\n"
+                f"Expected: {expected_msg!r}\n"
+                f"Actual:   {actual_msg!r}"
+            )
 
     if len(result_by_line) > 0:
         unexpected_msgs = []
