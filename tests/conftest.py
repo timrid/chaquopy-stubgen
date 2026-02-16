@@ -1,25 +1,69 @@
 # Note that this conftest file exists at the package level as it is needed to configure
 # the JVM for docstrings at the package level.
-import os
-import pathlib
+import logging
+import tempfile
+import textwrap
+from collections.abc import Generator
+from pathlib import Path
 
 import pytest
 
+import chaquopy_stubgen
 
-pytest_plugins = [
-    "mypy.test.data",
-]
-os.environ["MYPY_TEST_PREFIX"] = str(pathlib.Path(__file__).parent / "stubtest")
-
-ANDROID_JAR = pathlib.Path(__file__).parent / "android-35.jar"
+logger = logging.getLogger(__name__)
 
 
-@pytest.fixture(autouse=True, scope="session")
+ANDROID_JAR = Path(__file__).parent / "android-35.jar"
+
+
+@pytest.fixture(scope="session")
 def jvm():
     import jpype  # type: ignore
 
-    if not jpype.isJVMStarted():
-        jpype.startJVM(None, classpath=[ANDROID_JAR], convertStrings=True)  # type: ignore
+    jpype.startJVM(None, classpath=[ANDROID_JAR], convertStrings=True)  # type: ignore
     import jpype.imports  # type: ignore
 
-    yield jpype
+    try:
+        yield jpype
+    finally:
+        jpype.shutdownJVM()
+
+
+@pytest.fixture(scope="session")
+def stub_dir(jvm) -> Generator[Path, None, None]:
+    # logging.basicConfig(level="DEBUG")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+        import java  # type: ignore
+
+        logger.debug(f"Generating stubs in {tmpdir}...")
+
+        chaquopy_stubgen.generate_java_stubs(
+            [java],  # type: ignore
+            output_dir=tmpdir,
+        )
+
+        # Rename "java-stubs" to "java"
+        (tmpdir / "java-stubs").rename(tmpdir / "java")
+
+        yield tmpdir
+
+
+@pytest.fixture(scope="session")
+def mypy_project_dir(stub_dir: Path) -> Generator[Path, None, None]:
+    with tempfile.TemporaryDirectory() as tmp:
+        project_dir = Path(tmp)
+        with project_dir.joinpath("pyproject.toml").open("w") as f:
+            f.write(
+                textwrap.dedent(
+                    f"""\
+                    [tool.mypy]
+                    mypy_path = "{stub_dir.absolute()}"
+
+                    [[tool.mypy.overrides]]
+                    module = "java.*"
+                    ignore_errors = true
+                    """
+                )
+            )
+        yield project_dir
