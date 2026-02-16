@@ -2,7 +2,7 @@ import io
 import json
 import logging
 import os
-import textwrap
+import re
 import tokenize
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -46,24 +46,9 @@ def _parse_mypy_jsonl_output(mypy_stdout: str) -> list[MypyMessage]:
 
 def run_mypy(
     project_dir: Path,
-    extra_stub: Path,
     test_code: str,
 ) -> str:
     """Run mypy on the given test code and return the mypy stdout."""
-    with project_dir.joinpath("pyproject.toml").open("w") as f:
-        f.write(
-            textwrap.dedent(
-                f"""\
-                [tool.mypy]
-                mypy_path = "{extra_stub.absolute()}"
-
-                [[tool.mypy.overrides]]
-                module = "java.*"
-                ignore_errors = true
-                """
-            )
-        )
-
     testfile_name = "testfile.py"
     with project_dir.joinpath(testfile_name).open("w") as f:
         f.write(test_code)
@@ -81,7 +66,6 @@ def run_mypy(
 
 def run_and_assert_mypy(
     project_dir: Path,
-    extra_stub: Path,
     test_code: str,
     expected_output: dict[str, str] | str,
 ):
@@ -94,7 +78,7 @@ def run_and_assert_mypy(
     - A raw string containing the expected mypy output. In this case, the function will compare
       the raw mypy stdout with the expected string.
     """
-    mypy_stdout = run_mypy(project_dir, extra_stub, test_code)
+    mypy_stdout = run_mypy(project_dir, test_code)
     if isinstance(expected_output, dict):
         mypy_output = _parse_mypy_jsonl_output(mypy_stdout)
         assert_mypy_json_output(test_code, mypy_output, expected_output)
@@ -122,9 +106,7 @@ def _parse_marked_lines_with_tokenize(code: str) -> dict[str, int]:
 
     for token in tokens:
         if token.type == tokenize.COMMENT:
-            # Token.string contains the comment including the #
-            import re
-
+            # token.string contains the comment including the #
             match = re.search(r"#\s*\*(\d+)", token.string)
             if match:
                 marker = f"*{match.group(1)}"
@@ -142,6 +124,11 @@ def assert_mypy_json_output(
 
     # Parse the code to find the marked lines
     marked_lines: dict[str, int] = _parse_marked_lines_with_tokenize(code)
+
+    # Validate that all expected markers are present in the code
+    missing_markers = set(expected_output.keys()) - set(marked_lines.keys())
+    if missing_markers:
+        assert False, f"Expected markers not found in code: {', '.join(sorted(missing_markers))}"
 
     # Group messages by line number
     result_by_line: dict[int, list[MypyMessage]] = {}
@@ -168,5 +155,5 @@ def assert_mypy_json_output(
         unexpected_msgs = []
         for line, msgs in result_by_line.items():
             for msg in msgs:
-                unexpected_msgs.append(_format_mypy_msg(msg))
-            assert False, f"Unexpected mypy message in line {line}:\n{unexpected_msgs}"
+                unexpected_msgs.append(f"line {line}: {_format_mypy_msg(msg)}")
+        assert False, "Unexpected mypy messages:\n" + "\n".join(unexpected_msgs)

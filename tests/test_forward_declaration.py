@@ -3,7 +3,7 @@ from pathlib import Path
 from .mypy_helper import run_and_assert_mypy
 
 
-def test_argument_type_declaration(stub_dir: Path, mypy_project_dir: Path):
+def test_argument_type_declaration(mypy_project_dir: Path):
     code = """\
 import typing
 
@@ -18,4 +18,4 @@ def foo(arg: "java.util.Formatter"):
         "*1": 'note: Revealed type is "java.util.Formatter"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)

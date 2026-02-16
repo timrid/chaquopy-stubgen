@@ -1,9 +1,11 @@
 # Note that this conftest file exists at the package level as it is needed to configure
 # the JVM for docstrings at the package level.
-from collections.abc import Generator
-from pathlib import Path
 import logging
 import tempfile
+import textwrap
+from collections.abc import Generator
+from pathlib import Path
+
 import pytest
 
 import chaquopy_stubgen
@@ -22,9 +24,10 @@ def jvm():
     import jpype.imports  # type: ignore
 
     try:
-       yield jpype
+        yield jpype
     finally:
         jpype.shutdownJVM()
+
 
 @pytest.fixture(scope="session")
 def stub_dir(jvm) -> Generator[Path, None, None]:
@@ -47,7 +50,20 @@ def stub_dir(jvm) -> Generator[Path, None, None]:
 
 
 @pytest.fixture(scope="session")
-def mypy_project_dir() -> Generator[Path, None, None]:
+def mypy_project_dir(stub_dir: Path) -> Generator[Path, None, None]:
     with tempfile.TemporaryDirectory() as tmp:
-        yield Path(tmp)
+        project_dir = Path(tmp)
+        with project_dir.joinpath("pyproject.toml").open("w") as f:
+            f.write(
+                textwrap.dedent(
+                    f"""\
+                    [tool.mypy]
+                    mypy_path = "{stub_dir.absolute()}"
 
+                    [[tool.mypy.overrides]]
+                    module = "java.*"
+                    ignore_errors = true
+                    """
+                )
+            )
+        yield project_dir

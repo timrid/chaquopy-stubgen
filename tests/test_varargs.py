@@ -3,7 +3,7 @@ from pathlib import Path
 from .mypy_helper import run_and_assert_mypy
 
 
-def test_varargs_ints(stub_dir: Path, mypy_project_dir: Path):
+def test_varargs_ints(mypy_project_dir: Path):
     code = """\
 from java.util import Arrays
 
@@ -15,10 +15,10 @@ reveal_type(java_list)  # *1
         "*1": 'note: Revealed type is "java.util.List[builtins.int]"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_varargs_strings(stub_dir: Path, mypy_project_dir: Path):
+def test_varargs_strings(mypy_project_dir: Path):
     code = """\
 from java.util import Arrays
 
@@ -30,10 +30,10 @@ reveal_type(java_list)  # *1
         "*1": 'note: Revealed type is "java.util.List[builtins.str]"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_varargs_mixed(stub_dir: Path, mypy_project_dir: Path):
+def test_varargs_mixed(mypy_project_dir: Path):
     code = """\
 from java.util import Arrays
 
@@ -45,4 +45,4 @@ reveal_type(java_list)  # *1
         "*1": 'note: Revealed type is "java.util.List[builtins.object]"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)

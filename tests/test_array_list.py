@@ -3,7 +3,7 @@ from pathlib import Path
 from .mypy_helper import run_and_assert_mypy
 
 
-def test_array_list_valid(stub_dir: Path, mypy_project_dir: Path):
+def test_array_list_valid(mypy_project_dir: Path):
     code = """\
 from java.util import ArrayList
 
@@ -21,10 +21,10 @@ note: Revealed type is "java.util.ArrayList[builtins.str]"''',
 note: Revealed type is "builtins.str"''',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_array_list_invalid(stub_dir: Path, mypy_project_dir: Path):
+def test_array_list_invalid(mypy_project_dir: Path):
     code = """\
 from java.util import ArrayList
 
@@ -40,10 +40,10 @@ hint:     def add(self, e: str) -> bool
 hint:     def add(self, int: int | jint | Integer, e: str) -> None""",
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_array_list_no_implicit_conversion(stub_dir: Path, mypy_project_dir: Path):
+def test_array_list_no_implicit_conversion(mypy_project_dir: Path):
     code = """\
 from java.util import ArrayList
 
@@ -60,10 +60,10 @@ hint:     def [_ArrayList__E] ArrayList(self, int: int | jint | Integer) -> Arra
 hint:     def [_ArrayList__E] ArrayList(self, collection: Collection[_ArrayList__E]) -> ArrayList[_ArrayList__E]""",
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_array_list_missing_type_annotation(stub_dir: Path, mypy_project_dir: Path):
+def test_array_list_missing_type_annotation(mypy_project_dir: Path):
     code = """\
 from java.util import ArrayList
 
@@ -74,10 +74,10 @@ java_array_list = ArrayList(2)  # *1
         "*1": 'error: Need type annotation for "java_array_list"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_array_list_no_getitem(stub_dir: Path, mypy_project_dir: Path):
+def test_array_list_no_getitem(mypy_project_dir: Path):
     code = """\
 from java.util import ArrayList
 
@@ -89,4 +89,4 @@ java_array_list[0]  # *1
         "*1": 'error: Value of type "ArrayList[str]" is not indexable',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)

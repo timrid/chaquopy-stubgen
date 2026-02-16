@@ -3,7 +3,7 @@ from pathlib import Path
 from .mypy_helper import run_and_assert_mypy
 
 
-def test_bifunction_callback(stub_dir: Path, mypy_project_dir: Path):
+def test_bifunction_callback(mypy_project_dir: Path):
     code = """\
 import typing
 
@@ -63,10 +63,10 @@ java_map.forEach(
         "*2": 'error: Argument 1 to "PyBiConsumer" has incompatible type "Callable[[str], None]"; expected "Callable[[str, float], None]"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_predicate_callback(stub_dir: Path, mypy_project_dir: Path):
+def test_predicate_callback(mypy_project_dir: Path):
     code = """\
 import typing
 
@@ -135,10 +135,10 @@ java_list.removeIf(
         "*3": 'error: Argument 1 to "PyPredicate" has incompatible type "Callable[[str], int]"; expected "Callable[[str], bool]"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_stream_chaining_and_type_inference(stub_dir: Path, mypy_project_dir: Path):
+def test_stream_chaining_and_type_inference(mypy_project_dir: Path):
     code = """\
 import typing
 
@@ -238,4 +238,4 @@ reveal_type(
         "*6": 'note: Revealed type is "java.util.Set[java.util.concurrent.atomic.AtomicInteger]"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)

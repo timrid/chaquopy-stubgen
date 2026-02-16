@@ -3,7 +3,7 @@ from pathlib import Path
 from .mypy_helper import run_and_assert_mypy
 
 
-def test_hash_map_valid(stub_dir: Path, mypy_project_dir: Path):
+def test_hash_map_valid(mypy_project_dir: Path):
     code = """\
 from java.util import HashMap
 
@@ -27,10 +27,10 @@ java_map.put('test1', 42)
         "*4": 'note: Revealed type is "builtins.float"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
 
 
-def test_hash_map_invalid(stub_dir: Path, mypy_project_dir: Path):
+def test_hash_map_invalid(mypy_project_dir: Path):
     code = """\
 from java.util import HashMap
 
@@ -45,4 +45,4 @@ java_map.put('test1', 'foo')  # *1
         "*1": 'error: Argument 2 to "put" of "HashMap" has incompatible type "str"; expected "float"',
     }
 
-    run_and_assert_mypy(mypy_project_dir, stub_dir, code, expected_mypy_output)
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
