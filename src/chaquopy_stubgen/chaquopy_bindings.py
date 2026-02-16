@@ -351,7 +351,7 @@ def static_proxy(
     *implements: typing.Type[typing.Any],
     package: str | None = ...,
     modifiers: str = "public",
-) -> typing.Type[typing.Any]: ...
+) -> typing.Type[Object]: ...
 def constructor(
     arg_types: typing.Sequence[typing.Type[_JAVA_OBJ]],
     *,
