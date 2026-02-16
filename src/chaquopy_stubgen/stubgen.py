@@ -40,6 +40,7 @@ from typing import Any, Generator, Union
 import jpype
 
 from chaquopy_stubgen.chaquopy_bindings import add_chaquopy_bindings_to_java_package
+from chaquopy_stubgen.whitelists import METHOD_CAN_RETURN_NONE
 
 log = logging.getLogger(__name__)
 
@@ -879,6 +880,20 @@ def split_method_overload_javadoc(
     return ["\n".join(lines) for lines in out_lines]
 
 
+def generate_method_signature(j_overload: Any) -> str:
+    class_name = j_overload.getDeclaringClass().getName()
+    method_name = j_overload.getName()
+    j_args = j_overload.getParameters()
+
+    def param_type_name(p: Any) -> str:
+        t = p.getType()
+        return str(t.getCanonicalName() or t.getName())
+
+    return (
+        f"{class_name}.{method_name}({', '.join([param_type_name(p) for p in j_args])})"
+    )
+
+
 def generate_java_method_stub(
     package_name: str,
     name: str,
@@ -927,11 +942,17 @@ def generate_java_method_stub(
                 )
             )
 
+        ret_type = python_type(j_return_type, usable_type_vars)
+
+        method_signature = generate_method_signature(j_overload)
+        if method_signature in METHOD_CAN_RETURN_NONE:
+            ret_type = TypeStr("typing.Union", [ret_type, TypeStr("None")])
+
         signatures.append(
             JavaFunctionSig(
                 name,
                 args=args,
-                ret_type=python_type(j_return_type, usable_type_vars),
+                ret_type=ret_type,
                 static=static,
                 type_vars=method_type_vars,
             )
