@@ -18,3 +18,19 @@ raise RuntimeError("42") from java_exception
     }
 
     run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
+
+
+def test_java_exception_is_python_exception(mypy_project_dir: Path):
+    code = """\
+import builtins
+from java.lang import RuntimeException
+
+def f(e: builtins.Exception) -> None: ...
+e = RuntimeException("Error message")
+
+f(e)
+"""
+
+    expected_mypy_output = {}
+
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
