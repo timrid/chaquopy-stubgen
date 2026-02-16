@@ -356,21 +356,21 @@ def constructor(
     arg_types: typing.Sequence[typing.Type[_JAVA_OBJ]],
     *,
     modifiers: str = "public",
-    throws: typing.Optional[typing.Sequence[Throwable]] = None,
+    throws: typing.Optional[typing.Sequence[typing.Type[Throwable]]] = None,
 ) -> typing.Callable[[typing.Callable[..., typing.Any]], typing.Callable[..., typing.Any]]: ...
 def method(
     return_type: typing.Type[_JAVA_OBJ],
     arg_types: typing.Sequence[typing.Type[_JAVA_OBJ]],
     *,
     modifiers: str = "public",
-    throws: typing.Optional[typing.Sequence[Throwable]] = None,
+    throws: typing.Optional[typing.Sequence[typing.Type[Throwable]]] = None,
 ) -> typing.Callable[[typing.Callable[..., typing.Any]], typing.Callable[..., typing.Any]]: ...
 def Override(
     return_type: typing.Type[_JAVA_OBJ],
     arg_types: typing.Sequence[typing.Type[_JAVA_OBJ]],
     *,
     modifiers: str = "public",
-    throws: typing.Optional[typing.Sequence[Throwable]] = None,
+    throws: typing.Optional[typing.Sequence[typing.Type[Throwable]]] = None,
 ) -> typing.Callable[[typing.Callable[..., typing.Any]], typing.Callable[..., typing.Any]]: ...
 
 # utils.pxi #######################################################################################
