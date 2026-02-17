@@ -24,7 +24,7 @@ java_map.put('test1', 42)
         "*1": 'note: Revealed type is "java.util.HashMap[builtins.str, builtins.float]"',
         "*2": 'note: Revealed type is "java.util.Collection[builtins.float]"',
         "*3": 'note: Revealed type is "java.util.Set[builtins.str]"',
-        "*4": 'note: Revealed type is "builtins.float"',
+        "*4": 'note: Revealed type is "builtins.float | None"',
     }
 
     run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)

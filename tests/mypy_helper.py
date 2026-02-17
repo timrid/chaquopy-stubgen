@@ -67,7 +67,7 @@ def run_mypy(
 def run_and_assert_mypy(
     project_dir: Path,
     test_code: str,
-    expected_output: dict[str, str | list[str]] | str,
+    expected_output: dict[str, str] | dict[str, str | list[str]] | str,
 ):
     """
     Run mypy on the given test code and assert that the output matches the expected output.
@@ -118,7 +118,7 @@ def _parse_marked_lines_with_tokenize(code: str) -> dict[str, int]:
 def assert_mypy_json_output(
     code: str,
     mypy_output: list[MypyMessage],
-    expected_output: dict[str, str | list[str]],
+    expected_output: dict[str, str] | dict[str, str | list[str]],
 ):
     """Assert that the mypy output matches the expected output for the given code."""
 

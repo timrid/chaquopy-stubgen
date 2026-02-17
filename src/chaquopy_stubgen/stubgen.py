@@ -40,6 +40,7 @@ from typing import Any, Generator, Union
 import jpype
 
 from chaquopy_stubgen.chaquopy_bindings import add_chaquopy_bindings_to_java_package
+from chaquopy_stubgen.whitelists import METHOD_CAN_RETURN_NONE
 
 log = logging.getLogger(__name__)
 
@@ -400,7 +401,7 @@ def java_super_types(j_class: jpype.JClass) -> list[Any]:
     return super_types
 
 
-def is_method_present_in_java_lang_object(jMethod: Any) -> bool:
+def is_method_present_in_java_lang_object(j_method: Any) -> bool:
     """
     Checks is a particular method signature is present on java.lang.Object.
     This is used to find the method to call on java FunctionalInterfaces, as according to the JLS [1], these methods
@@ -411,7 +412,9 @@ def is_method_present_in_java_lang_object(jMethod: Any) -> bool:
     from java.lang import Object  # type: ignore
 
     try:
-        Object.class_.getDeclaredMethod(jMethod.getName(), jMethod.getParameterTypes())
+        Object.class_.getDeclaredMethod(
+            j_method.getName(), j_method.getParameterTypes()
+        )
         return True
     except jpype.JException:  # java NoSuchMethodException
         return False
@@ -430,7 +433,7 @@ def invoked_method_on_functional_interface(j_class: Any) -> Any:
             return j_method
 
 
-def resolve_functional_Interface_method_type(
+def resolve_functional_interface_method_type(
     j_type: Any, class_type_params: list[Any], type_args: list[TypeStr] | None
 ):
     if j_type in class_type_params and type_args is not None:
@@ -488,12 +491,12 @@ def mangle_callable_type_args(
         return None  # TODO: implement inheritance case ...
     j_class_type_parameters = list(j_class.getTypeParameters())
     resolved_param_types = [
-        resolve_functional_Interface_method_type(
-            paramType, j_class_type_parameters, type_args
+        resolve_functional_interface_method_type(
+            param_type, j_class_type_parameters, type_args
         )
-        for paramType in invoked_method.getGenericParameterTypes()
+        for param_type in invoked_method.getGenericParameterTypes()
     ]
-    resolved_return_type = resolve_functional_Interface_method_type(
+    resolved_return_type = resolve_functional_interface_method_type(
         invoked_method.getGenericReturnType(), j_class_type_parameters, type_args
     )
     return [TypeStr("", resolved_param_types), resolved_return_type]
@@ -523,6 +526,8 @@ TYPE_NAME_TO_PRIMITIVE_MAP: dict[str, Primitive] = {
     **{p.java_primitive: p for p in PRIMITIVES},
     **{p.java_object: p for p in PRIMITIVES},
 }
+
+JAVA_PRIMITIVE_TYPES = {p.java_primitive for p in PRIMITIVES}
 
 
 def translate_type_name(
@@ -879,8 +884,22 @@ def split_method_overload_javadoc(
     return ["\n".join(lines) for lines in out_lines]
 
 
+def generate_method_signature(j_overload: Any) -> str:
+    class_name = j_overload.getDeclaringClass().getName()
+    method_name = j_overload.getName()
+    j_args = j_overload.getParameters()
+
+    def param_type_name(p: Any) -> str:
+        t = p.getType()
+        return str(t.getCanonicalName() or t.getName())
+
+    return (
+        f"{class_name}.{method_name}({', '.join([param_type_name(p) for p in j_args])})"
+    )
+
+
 def generate_java_method_stub(
-    parent_name: str,
+    package_name: str,
     name: str,
     j_overloads: list[Any],
     javadoc: dict[str, str],
@@ -900,9 +919,9 @@ def generate_java_method_stub(
         static = False if is_constructor else is_static(j_overload)
         method_type_vars = [
             python_type_var(
-                jType, uniq_scope_id=f"{name}_{i}" if is_overloaded else name
+                j_type, uniq_scope_id=f"{name}_{i}" if is_overloaded else name
             )
-            for jType in j_overload.getTypeParameters()
+            for j_type in j_overload.getTypeParameters()
         ]
         usable_type_vars = (
             method_type_vars + class_type_vars if not static else method_type_vars
@@ -927,11 +946,26 @@ def generate_java_method_stub(
                 )
             )
 
+        ret_type = python_type(j_return_type, usable_type_vars)
+
+        method_signature = generate_method_signature(j_overload)
+        if method_signature in METHOD_CAN_RETURN_NONE:
+            if (
+                j_return_type is not None
+                and hasattr(j_return_type, "getName")
+                and (java_primitive := j_return_type.getName()) in JAVA_PRIMITIVE_TYPES
+            ):
+                log.warning(
+                    f"Method '{method_signature}' is whitelisted as potentially returning None, but returns the primitive '{java_primitive}' which cannot be None. Probably this whitelist entry is wrong..."
+                )
+
+            ret_type = TypeStr("typing.Union", [ret_type, TypeStr("None")])
+
         signatures.append(
             JavaFunctionSig(
                 name,
                 args=args,
-                ret_type=python_type(j_return_type, usable_type_vars),
+                ret_type=ret_type,
                 static=static,
                 type_vars=method_type_vars,
             )
@@ -940,10 +974,10 @@ def generate_java_method_stub(
     # in case of overloaded methods, no type var declarations are allowed in
     # between overloads - so put them first.
     for signature in signatures:
-        for typeVar in signature.type_vars:
+        for type_var in signature.type_vars:
             output.append(
                 to_type_var_declaration(
-                    typeVar, parent_name, classes_done, classes_used, imports_output
+                    type_var, package_name, classes_done, classes_used, imports_output
                 )
             )
 
@@ -973,7 +1007,7 @@ def generate_java_method_stub(
                 if arg.arg_type:
                     arg_def += ": " + to_annotated_type(
                         arg.arg_type,
-                        parent_name,
+                        package_name,
                         classes_done,
                         classes_used,
                         imports_output,
@@ -1002,7 +1036,7 @@ def generate_java_method_stub(
                     args=", ".join(sig),
                     ret=to_annotated_type(
                         signature.ret_type,
-                        parent_name,
+                        package_name,
                         classes_done,
                         classes_used,
                         imports_output,
@@ -1016,7 +1050,7 @@ def generate_java_method_stub(
 
 
 def generate_java_field_stub(
-    parent_name: str,
+    package_name: str,
     j_field: Any,
     javadoc: dict[str, str],
     classes_done: set[str],
@@ -1033,7 +1067,7 @@ def generate_java_field_stub(
     field_type = python_type(j_field.getType(), class_type_vars if not static else None)
     field_type_annotation = to_annotated_type(
         field_type,
-        parent_name,
+        package_name,
         classes_done,
         classes_used,
         imports_output,
@@ -1103,7 +1137,7 @@ def to_annotated_type(
 
 def to_type_var_declaration(
     type_var: TypeVarStr,
-    parent_name: str,
+    package_name: str,
     classes_done: set[str],
     types_used: set[str],
     imports_output: list[str],
@@ -1116,7 +1150,7 @@ def to_type_var_declaration(
                 pyname=type_var.python_name,
                 bound=to_annotated_type(
                     type_var.bound,
-                    parent_name,
+                    package_name,
                     classes_done,
                     types_used,
                     imports_output,
