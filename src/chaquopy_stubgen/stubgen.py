@@ -884,6 +884,63 @@ def split_method_overload_javadoc(
     return ["\n".join(lines) for lines in out_lines]
 
 
+def count_typevar_occurrences(java_type: Any, typevar_name: str) -> int:
+    """Count how many times a specific type variable appears in a Java type."""
+    from java.lang.reflect import (  # type: ignore
+        GenericArrayType,
+        ParameterizedType,
+        TypeVariable,
+        WildcardType,
+    )
+
+    if java_type is None:
+        return 0
+    if isinstance(java_type, TypeVariable):
+        return 1 if str(java_type.getName()) == typevar_name else 0
+    elif isinstance(java_type, ParameterizedType):
+        return sum(
+            count_typevar_occurrences(arg, typevar_name)
+            for arg in java_type.getActualTypeArguments()
+        )
+    elif isinstance(java_type, WildcardType):
+        bounds = list(java_type.getUpperBounds()) + list(java_type.getLowerBounds())
+        return sum(count_typevar_occurrences(b, typevar_name) for b in bounds)
+    elif isinstance(java_type, GenericArrayType) or java_type.isArray():
+        return count_typevar_occurrences(
+            java_array_component_type(java_type), typevar_name
+        )
+    return 0
+
+
+def filter_type_params_appearing_in_args_and_return(
+    j_type_params: list[Any], j_return_type: Any, j_args: list[Any]
+) -> list[Any]:
+    """
+    Filter type parameters to only include those that are meaningfully used.
+
+    This prevents 'TypeVar appears only once' warnings from type checkers.
+    A TypeVar is kept if:
+    - It appears in both arguments AND return type, OR
+    - It appears multiple times in arguments (e.g., Objects.compare(T, T, Comparator<T>)), OR
+    - It appears multiple times in return type (e.g., Collectors.toSet() -> Collector<T, ?, Set<T>>)
+    """
+    valid_j_type_params = []
+    for j_type_param in j_type_params:
+        typevar_name = str(j_type_param.getName())
+        # Count occurrences in return type
+        return_count = count_typevar_occurrences(j_return_type, typevar_name)
+        # Count occurrences in arguments
+        args_count = sum(
+            count_typevar_occurrences(j_arg.getParameterizedType(), typevar_name)
+            for j_arg in j_args
+        )
+        # Keep if: (in return AND in args) OR (appears multiple times in args) OR (appears multiple times in return)
+        if (return_count > 0 and args_count > 0) or args_count > 1 or return_count > 1:
+            valid_j_type_params.append(j_type_param)
+
+    return valid_j_type_params
+
+
 def generate_method_signature(j_overload: Any) -> str:
     class_name = j_overload.getDeclaringClass().getName()
     method_name = j_overload.getName()
@@ -917,11 +974,21 @@ def generate_java_method_stub(
         j_return_type = None if is_constructor else j_overload.getGenericReturnType()
         j_args = j_overload.getParameters()
         static = False if is_constructor else is_static(j_overload)
+        all_j_type_params = list(j_overload.getTypeParameters())
+
+        if static:
+            j_type_params_to_use = filter_type_params_appearing_in_args_and_return(
+                all_j_type_params, j_return_type, j_args
+            )
+        else:
+            j_type_params_to_use = all_j_type_params
+
+        # Create TypeVars for filtered type parameters
         method_type_vars = [
             python_type_var(
                 j_type, uniq_scope_id=f"{name}_{i}" if is_overloaded else name
             )
-            for j_type in j_overload.getTypeParameters()
+            for j_type in j_type_params_to_use
         ]
         usable_type_vars = (
             method_type_vars + class_type_vars if not static else method_type_vars
