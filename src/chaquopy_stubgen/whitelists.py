@@ -24,7 +24,6 @@ METHOD_CAN_RETURN_NONE = {
     "java.lang.Class.getResourceAsStream(java.lang.String)",
     "java.lang.Class.getSigners()",
     "java.lang.Class.getSuperclass()",
-    "java.lang.Class.cast(java.lang.Object)",
 
     # ClassLoader methods
     "java.lang.ClassLoader.getParent()",
@@ -228,8 +227,6 @@ METHOD_CAN_RETURN_NONE = {
     # =====================================================================
 
     # SortedSet interface
-    "java.util.SortedSet.first()",
-    "java.util.SortedSet.last()",
     "java.util.SortedSet.comparator()",
 
     # NavigableSet interface
@@ -247,14 +244,11 @@ METHOD_CAN_RETURN_NONE = {
     "java.util.TreeSet.ceiling(java.lang.Object)",
     "java.util.TreeSet.pollFirst()",
     "java.util.TreeSet.pollLast()",
-    "java.util.TreeSet.first()",
-    "java.util.TreeSet.last()",
 
     # =====================================================================
     # java.util - Properties
     # =====================================================================
     "java.util.Properties.getProperty(java.lang.String)",
-    "java.util.Properties.getProperty(java.lang.String, java.lang.String)",
     "java.util.Properties.setProperty(java.lang.String, java.lang.String)",
 
     # =====================================================================
@@ -320,8 +314,6 @@ METHOD_CAN_RETURN_NONE = {
     "java.util.concurrent.ConcurrentSkipListSet.ceiling(java.lang.Object)",
     "java.util.concurrent.ConcurrentSkipListSet.pollFirst()",
     "java.util.concurrent.ConcurrentSkipListSet.pollLast()",
-    "java.util.concurrent.ConcurrentSkipListSet.first()",
-    "java.util.concurrent.ConcurrentSkipListSet.last()",
 
     # BlockingQueue
     "java.util.concurrent.BlockingQueue.poll(long, java.util.concurrent.TimeUnit)",
@@ -962,7 +954,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.bluetooth.BluetoothCodecStatus.getCodecConfig()",
 
     # BluetoothDevice
-    "android.bluetooth.BluetoothDevice.getAddress()",
     "android.bluetooth.BluetoothDevice.getAlias()",
     "android.bluetooth.BluetoothDevice.getBluetoothClass()",
     "android.bluetooth.BluetoothDevice.getName()",
@@ -1013,7 +1004,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.bluetooth.le.ScanRecord.getDeviceName()",
     "android.bluetooth.le.ScanRecord.getManufacturerSpecificData()",
     "android.bluetooth.le.ScanRecord.getManufacturerSpecificData(int)",
-    "android.bluetooth.le.ScanRecord.getServiceData()",
     "android.bluetooth.le.ScanRecord.getServiceData(android.os.ParcelUuid)",
     "android.bluetooth.le.ScanRecord.getServiceUuids()",
 
