@@ -36,6 +36,7 @@ dynamic = ["version"]
 dev = [
     "pytest",
     "mypy==1.19.1",
+    "towncrier==25.8.0",
 ]
 
 [tool.setuptools_scm]
@@ -43,3 +44,38 @@ version_file = "src/chaquopy_stubgen/_version.py"
 
 [tool.pytest.ini_options]
 addopts = "--doctest-modules -p no:faulthandler"
+
+[tool.towncrier]
+package = "chaquopy_stubgen"
+package_dir = "src"
+filename = "CHANGELOG.md"
+directory = "changes"
+template = "changes/template.md.jinja"
+title_format = "## [{version}] - {project_date}"
+issue_format = "[#{issue}](https://github.com/timrid/chaquopy-stubgen/issues/{issue})"
+start_string = "<!-- towncrier release notes start -->"
+
+[[tool.towncrier.type]]
+directory = "feature"
+name = "Features"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "bugfix"
+name = "Bug Fixes"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "doc"
+name = "Documentation"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "removal"
+name = "Deprecations and Removals"
+showcontent = true
+
+[[tool.towncrier.type]]
+directory = "misc"
+name = "Miscellaneous"
+showcontent = false
