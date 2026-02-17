@@ -1035,6 +1035,7 @@ METHOD_CAN_RETURN_NONE = {
     "android.bluetooth.le.ScanRecord.getManufacturerSpecificData(int)",
     "android.bluetooth.le.ScanRecord.getServiceData()",
     "android.bluetooth.le.ScanRecord.getServiceData(android.os.ParcelUuid)",
+    "android.bluetooth.le.ScanRecord.getServiceUuids()",
 
     # ScanResult
     "android.bluetooth.le.ScanResult.getScanRecord()",
