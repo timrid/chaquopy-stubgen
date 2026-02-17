@@ -602,23 +602,7 @@ METHOD_CAN_RETURN_NONE = {
     "android.app.AlertDialog.getButton(int)",
 
     # AppOpsManager
-    "android.app.AppOpsManager.checkOpNoThrow(java.lang.String, int, java.lang.String)",
-    "android.app.AppOpsManager.noteOp(java.lang.String, int, java.lang.String)",
-    "android.app.AppOpsManager.noteOp(java.lang.String, int, java.lang.String, java.lang.String, java.lang.String)",
-    "android.app.AppOpsManager.noteOpNoThrow(java.lang.String, int, java.lang.String)",
-    "android.app.AppOpsManager.noteOpNoThrow(java.lang.String, int, java.lang.String, java.lang.String, java.lang.String)",
-    "android.app.AppOpsManager.noteProxyOp(java.lang.String, java.lang.String)",
-    "android.app.AppOpsManager.noteProxyOp(java.lang.String, java.lang.String, int, java.lang.String, java.lang.String)",
-    "android.app.AppOpsManager.noteProxyOpNoThrow(java.lang.String, java.lang.String)",
-    "android.app.AppOpsManager.noteProxyOpNoThrow(java.lang.String, java.lang.String, int)",
-    "android.app.AppOpsManager.noteProxyOpNoThrow(java.lang.String, java.lang.String, int, java.lang.String, java.lang.String)",
     "android.app.AppOpsManager.permissionToOp(java.lang.String)",
-    "android.app.AppOpsManager.startOp(java.lang.String, int, java.lang.String)",
-    "android.app.AppOpsManager.startOp(java.lang.String, int, java.lang.String, java.lang.String, java.lang.String)",
-    "android.app.AppOpsManager.startOpNoThrow(java.lang.String, int, java.lang.String)",
-    "android.app.AppOpsManager.startOpNoThrow(java.lang.String, int, java.lang.String, java.lang.String, java.lang.String)",
-    "android.app.AppOpsManager.startProxyOp(java.lang.String, int, java.lang.String, java.lang.String, java.lang.String)",
-    "android.app.AppOpsManager.startProxyOpNoThrow(java.lang.String, int, java.lang.String, java.lang.String, java.lang.String)",
 
     # ApplicationErrorReport
     "android.app.ApplicationErrorReport.getErrorReportReceiver(android.content.Context, java.lang.String, int)",
@@ -960,7 +944,6 @@ METHOD_CAN_RETURN_NONE = {
     # AppWidgetManager
     "android.appwidget.AppWidgetManager.getAppWidgetInfo(int)",
     "android.appwidget.AppWidgetManager.getWidgetPreview(android.content.ComponentName, android.os.UserHandle, int)",
-    "android.appwidget.AppWidgetManager.requestPinAppWidget(android.content.ComponentName, android.os.Bundle, android.app.PendingIntent)",
 
     # AppWidgetProviderInfo
     "android.appwidget.AppWidgetProviderInfo.loadDescription(android.content.Context)",
@@ -1010,9 +993,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.bluetooth.BluetoothLeAudioCodecStatus.getOutputCodecConfig()",
 
     # BluetoothLeScanner
-    "android.bluetooth.le.BluetoothLeScanner.startScan(android.bluetooth.le.ScanCallback)",
-    "android.bluetooth.le.BluetoothLeScanner.startScan(java.util.List, android.bluetooth.le.ScanSettings, android.app.PendingIntent)",
-    "android.bluetooth.le.BluetoothLeScanner.startScan(java.util.List, android.bluetooth.le.ScanSettings, android.bluetooth.le.ScanCallback)",
 
     # ScanFilter
     "android.bluetooth.le.ScanFilter.getAdvertisingData()",
@@ -1139,8 +1119,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.content.ContentProviderClient.call(java.lang.String, java.lang.String, android.os.Bundle)",
     "android.content.ContentProviderClient.call(java.lang.String, java.lang.String, java.lang.String, android.os.Bundle)",
     "android.content.ContentProviderClient.canonicalize(android.net.Uri)",
-    "android.content.ContentProviderClient.delete(android.net.Uri, android.os.Bundle)",
-    "android.content.ContentProviderClient.delete(android.net.Uri, java.lang.String, java.lang.String[])",
     "android.content.ContentProviderClient.getLocalContentProvider()",
     "android.content.ContentProviderClient.getStreamTypes(android.net.Uri, java.lang.String)",
     "android.content.ContentProviderClient.getType(android.net.Uri)",
@@ -1157,8 +1135,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.content.ContentProviderClient.query(android.net.Uri, java.lang.String[], java.lang.String, java.lang.String[], java.lang.String)",
     "android.content.ContentProviderClient.query(android.net.Uri, java.lang.String[], java.lang.String, java.lang.String[], java.lang.String, android.os.CancellationSignal)",
     "android.content.ContentProviderClient.uncanonicalize(android.net.Uri)",
-    "android.content.ContentProviderClient.update(android.net.Uri, android.content.ContentValues, android.os.Bundle)",
-    "android.content.ContentProviderClient.update(android.net.Uri, android.content.ContentValues, java.lang.String, java.lang.String[])",
 
     # ContentProviderOperation
     "android.content.ContentProviderOperation.resolveExtrasBackReferences(android.content.ContentProviderResult[], int)",
@@ -1176,8 +1152,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.content.ContentResolver.call(android.net.Uri, java.lang.String, java.lang.String, android.os.Bundle)",
     "android.content.ContentResolver.call(java.lang.String, java.lang.String, java.lang.String, android.os.Bundle)",
     "android.content.ContentResolver.canonicalize(android.net.Uri)",
-    "android.content.ContentResolver.delete(android.net.Uri, android.os.Bundle)",
-    "android.content.ContentResolver.delete(android.net.Uri, java.lang.String, java.lang.String[])",
     "android.content.ContentResolver.getCurrentSync()",
     "android.content.ContentResolver.getStreamTypes(android.net.Uri, java.lang.String)",
     "android.content.ContentResolver.getType(android.net.Uri)",
@@ -1200,8 +1174,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.content.ContentResolver.query(android.net.Uri, java.lang.String[], java.lang.String, java.lang.String[], java.lang.String)",
     "android.content.ContentResolver.query(android.net.Uri, java.lang.String[], java.lang.String, java.lang.String[], java.lang.String, android.os.CancellationSignal)",
     "android.content.ContentResolver.uncanonicalize(android.net.Uri)",
-    "android.content.ContentResolver.update(android.net.Uri, android.content.ContentValues, android.os.Bundle)",
-    "android.content.ContentResolver.update(android.net.Uri, android.content.ContentValues, java.lang.String, java.lang.String[])",
 
     # Context
     "android.content.Context.getAttributionTag()",
@@ -1275,12 +1247,9 @@ METHOD_CAN_RETURN_NONE = {
     "android.content.Intent.resolveTypeIfNeeded(android.content.ContentResolver)",
 
     # IntentFilter
-    "android.content.IntentFilter.match(android.content.ContentResolver, android.content.Intent, boolean, java.lang.String)",
-    "android.content.IntentFilter.match(java.lang.String, java.lang.String, java.lang.String, android.net.Uri, java.util.Set, java.lang.String)",
     "android.content.IntentFilter.matchCategories(java.util.Set)",
 
     # IntentFilter$AuthorityEntry
-    "android.content.IntentFilter$AuthorityEntry.match(android.net.Uri)",
 
     # RestrictionEntry
     "android.content.RestrictionEntry.getDescription()",
@@ -1308,7 +1277,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.content.pm.ApkChecksum.getSplitName()",
 
     # ApplicationInfo
-    "android.content.pm.ApplicationInfo.dump(android.util.Printer, java.lang.String)",
     "android.content.pm.ApplicationInfo.loadDescription(android.content.pm.PackageManager)",
 
     # ArchivedActivityInfo
@@ -1477,7 +1445,6 @@ METHOD_CAN_RETURN_NONE = {
 
     # SQLiteDatabase
     "android.database.sqlite.SQLiteDatabase.getAttachedDbs()",
-    "android.database.sqlite.SQLiteDatabase.insertWithOnConflict(java.lang.String, java.lang.String, android.content.ContentValues, int)",
     "android.database.sqlite.SQLiteDatabase.openDatabase(java.io.File, android.database.sqlite.SQLiteDatabase.OpenParams)",
     "android.database.sqlite.SQLiteDatabase.openDatabase(java.lang.String, android.database.sqlite.SQLiteDatabase.CursorFactory, int)",
     "android.database.sqlite.SQLiteDatabase.openDatabase(java.lang.String, android.database.sqlite.SQLiteDatabase.CursorFactory, int, android.database.DatabaseErrorHandler)",
@@ -1492,7 +1459,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.database.sqlite.SQLiteDatabase.queryWithFactory(android.database.sqlite.SQLiteDatabase.CursorFactory, boolean, java.lang.String, java.lang.String[], java.lang.String, java.lang.String[], java.lang.String, java.lang.String, java.lang.String, java.lang.String, android.os.CancellationSignal)",
     "android.database.sqlite.SQLiteDatabase.rawQueryWithFactory(android.database.sqlite.SQLiteDatabase.CursorFactory, java.lang.String, java.lang.String[], java.lang.String)",
     "android.database.sqlite.SQLiteDatabase.rawQueryWithFactory(android.database.sqlite.SQLiteDatabase.CursorFactory, java.lang.String, java.lang.String[], java.lang.String, android.os.CancellationSignal)",
-    "android.database.sqlite.SQLiteDatabase.updateWithOnConflict(java.lang.String, android.content.ContentValues, java.lang.String, java.lang.String[], int)",
 
     # SQLiteDatabase$OpenParams
     "android.database.sqlite.SQLiteDatabase$OpenParams.getCursorFactory()",
@@ -1581,8 +1547,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.graphics.Paint.getBlendMode()",
     "android.graphics.Paint.getMaskFilter()",
     "android.graphics.Paint.getPathEffect()",
-    "android.graphics.Paint.getRunCharacterAdvance(char[], int, int, int, int, boolean, int, float[], int)",
-    "android.graphics.Paint.getRunCharacterAdvance(java.lang.CharSequence, int, int, int, int, boolean, int, float[], int)",
     "android.graphics.Paint.getShader()",
     "android.graphics.Paint.getTypeface()",
     "android.graphics.Paint.getXfermode()",
@@ -1712,7 +1676,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.hardware.biometrics.BiometricManager$Strings.getSettingName()",
 
     # BiometricPrompt
-    "android.hardware.biometrics.BiometricPrompt.getAllowedAuthenticators()",
     "android.hardware.biometrics.BiometricPrompt.getContentView()",
     "android.hardware.biometrics.BiometricPrompt.getDescription()",
     "android.hardware.biometrics.BiometricPrompt.getLogoBitmap()",
@@ -1795,7 +1758,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.hardware.display.DisplayManager.createVirtualDisplay(java.lang.String, int, int, int, android.view.Surface, int)",
     "android.hardware.display.DisplayManager.createVirtualDisplay(java.lang.String, int, int, int, android.view.Surface, int, android.hardware.display.VirtualDisplay.Callback, android.os.Handler)",
     "android.hardware.display.DisplayManager.getDisplay(int)",
-    "android.hardware.display.DisplayManager.registerDisplayListener(android.hardware.display.DisplayManager.DisplayListener, android.os.Handler)",
 
     # VirtualDisplayConfig
     "android.hardware.display.VirtualDisplayConfig.getSurface()",
@@ -1960,8 +1922,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.icu.lang.UScript.getCode(java.util.Locale)",
 
     # CollationElementIterator
-    "android.icu.text.CollationElementIterator.next()",
-    "android.icu.text.CollationElementIterator.previous()",
 
     # ConstrainedFieldPosition
     "android.icu.text.ConstrainedFieldPosition.getField()",
@@ -1969,7 +1929,6 @@ METHOD_CAN_RETURN_NONE = {
 
     # DateFormat
     "android.icu.text.DateFormat.parse(java.lang.String)",
-    "android.icu.text.DateFormat.parse(java.lang.String, android.icu.util.Calendar, java.text.ParsePosition)",
     "android.icu.text.DateFormat.parse(java.lang.String, java.text.ParsePosition)",
 
     # DateFormat$Field
@@ -2063,11 +2022,8 @@ METHOD_CAN_RETURN_NONE = {
     # android.location
     # Geocoder
     "android.location.Geocoder.getFromLocation(double, double, int)",
-    "android.location.Geocoder.getFromLocation(double, double, int, android.location.Geocoder.GeocodeListener)",
     "android.location.Geocoder.getFromLocationName(java.lang.String, int)",
-    "android.location.Geocoder.getFromLocationName(java.lang.String, int, android.location.Geocoder.GeocodeListener)",
     "android.location.Geocoder.getFromLocationName(java.lang.String, int, double, double, double, double)",
-    "android.location.Geocoder.getFromLocationName(java.lang.String, int, double, double, double, double, android.location.Geocoder.GeocodeListener)",
 
     # GnssAntennaInfo
     "android.location.GnssAntennaInfo.getPhaseCenterVariationCorrections()",
@@ -2716,7 +2672,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.net.wifi.p2p.WifiP2pConfig.getPassphrase()",
 
     # WifiP2pDevice
-    "android.net.wifi.p2p.WifiP2pDevice.equals(java.lang.Object)",
     "android.net.wifi.p2p.WifiP2pDevice.getIpAddress()",
     "android.net.wifi.p2p.WifiP2pDevice.getWfdInfo()",
 
@@ -2791,7 +2746,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.os.BatteryManager.getStringProperty(int)",
 
     # Binder
-    "android.os.Binder.getCallingUid()",
     "android.os.Binder.getInterfaceDescriptor()",
     "android.os.Binder.queryLocalInterface(java.lang.String)",
 
@@ -2829,10 +2783,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.os.DropBoxManager$Entry.getText(int)",
 
     # FileUtils
-    "android.os.FileUtils.copy(java.io.FileDescriptor, java.io.FileDescriptor)",
-    "android.os.FileUtils.copy(java.io.FileDescriptor, java.io.FileDescriptor, android.os.CancellationSignal, java.util.concurrent.Executor, android.os.FileUtils.ProgressListener)",
-    "android.os.FileUtils.copy(java.io.InputStream, java.io.OutputStream)",
-    "android.os.FileUtils.copy(java.io.InputStream, java.io.OutputStream, android.os.CancellationSignal, java.util.concurrent.Executor, android.os.FileUtils.ProgressListener)",
 
     # IBinder
     "android.os.IBinder.getInterfaceDescriptor()",
@@ -2871,7 +2821,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.os.Parcel.createTypedArrayList(android.os.Parcelable.Creator)",
     "android.os.Parcel.createTypedArrayMap(android.os.Parcelable.Creator)",
     "android.os.Parcel.createTypedSparseArray(android.os.Parcelable.Creator)",
-    "android.os.Parcel.dataPosition()",
     "android.os.Parcel.readArray(java.lang.ClassLoader)",
     "android.os.Parcel.readArray(java.lang.ClassLoader, java.lang.Class)",
     "android.os.Parcel.readArrayList(java.lang.ClassLoader)",
@@ -2881,7 +2830,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.os.Parcel.readBundle(java.lang.ClassLoader)",
     "android.os.Parcel.readHashMap(java.lang.ClassLoader)",
     "android.os.Parcel.readHashMap(java.lang.ClassLoader, java.lang.Class, java.lang.Class)",
-    "android.os.Parcel.readInt()",
     "android.os.Parcel.readParcelable(java.lang.ClassLoader)",
     "android.os.Parcel.readParcelable(java.lang.ClassLoader, java.lang.Class)",
     "android.os.Parcel.readParcelableArray(java.lang.ClassLoader)",
@@ -2896,7 +2844,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.os.Parcel.readSparseArray(java.lang.ClassLoader, java.lang.Class)",
     "android.os.Parcel.readSparseBooleanArray()",
     "android.os.Parcel.readString()",
-    "android.os.Parcel.readStringArray(java.lang.String[])",
     "android.os.Parcel.readTypedObject(android.os.Parcelable.Creator)",
     "android.os.Parcel.readValue(java.lang.ClassLoader)",
 
@@ -3261,7 +3208,6 @@ METHOD_CAN_RETURN_NONE = {
     # QuickAccessWalletService
     "android.service.quickaccesswallet.QuickAccessWalletService.getTargetActivityPendingIntent()",
     "android.service.quickaccesswallet.QuickAccessWalletService.onBind(android.content.Intent)",
-    "android.service.quickaccesswallet.QuickAccessWalletService.onWalletCardsRequested(android.service.quickaccesswallet.GetWalletCardsRequest, android.service.quickaccesswallet.GetWalletCardsCallback)",
 
     # WalletCard
     "android.service.quickaccesswallet.WalletCard.getCardIcon()",
@@ -3403,7 +3349,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.telephony.NetworkRegistrationInfo.getRegisteredPlmn()",
 
     # PhoneNumberUtils
-    "android.telephony.PhoneNumberUtils.formatNumber(android.text.Editable, int)",
     "android.telephony.PhoneNumberUtils.formatNumber(java.lang.String)",
     "android.telephony.PhoneNumberUtils.formatNumber(java.lang.String, java.lang.String)",
     "android.telephony.PhoneNumberUtils.formatNumber(java.lang.String, java.lang.String, java.lang.String)",
@@ -3552,16 +3497,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.text.style.TypefaceSpan.getTypeface()",
 
     # Linkify
-    "android.text.util.Linkify.addLinks(android.text.Spannable, int)",
-    "android.text.util.Linkify.addLinks(android.text.Spannable, int, java.util.function.Function)",
-    "android.text.util.Linkify.addLinks(android.text.Spannable, java.util.regex.Pattern, java.lang.String)",
-    "android.text.util.Linkify.addLinks(android.text.Spannable, java.util.regex.Pattern, java.lang.String, android.text.util.Linkify.MatchFilter, android.text.util.Linkify.TransformFilter)",
-    "android.text.util.Linkify.addLinks(android.text.Spannable, java.util.regex.Pattern, java.lang.String, java.lang.String[], android.text.util.Linkify.MatchFilter, android.text.util.Linkify.TransformFilter)",
-    "android.text.util.Linkify.addLinks(android.text.Spannable, java.util.regex.Pattern, java.lang.String, java.lang.String[], android.text.util.Linkify.MatchFilter, android.text.util.Linkify.TransformFilter, java.util.function.Function)",
-    "android.text.util.Linkify.addLinks(android.widget.TextView, int)",
-    "android.text.util.Linkify.addLinks(android.widget.TextView, java.util.regex.Pattern, java.lang.String)",
-    "android.text.util.Linkify.addLinks(android.widget.TextView, java.util.regex.Pattern, java.lang.String, android.text.util.Linkify.MatchFilter, android.text.util.Linkify.TransformFilter)",
-    "android.text.util.Linkify.addLinks(android.widget.TextView, java.util.regex.Pattern, java.lang.String, java.lang.String[], android.text.util.Linkify.MatchFilter, android.text.util.Linkify.TransformFilter)",
 
     # Rfc822Token
     "android.text.util.Rfc822Token.getAddress()",
@@ -3754,7 +3689,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.view.View.getBackgroundTintList()",
     "android.view.View.getBackgroundTintMode()",
     "android.view.View.getClipBounds()",
-    "android.view.View.getClipBounds(android.graphics.Rect)",
     "android.view.View.getContentCaptureSession()",
     "android.view.View.getDisplay()",
     "android.view.View.getDrawingCache()",
@@ -3949,14 +3883,10 @@ METHOD_CAN_RETURN_NONE = {
     "android.view.inputmethod.InlineSuggestionsRequest.getInlineTooltipPresentationSpec()",
 
     # InputConnection
-    "android.view.inputmethod.InputConnection.commitText(java.lang.CharSequence, int)",
-    "android.view.inputmethod.InputConnection.commitText(java.lang.CharSequence, int, android.view.inputmethod.TextAttribute)",
     "android.view.inputmethod.InputConnection.getHandler()",
     "android.view.inputmethod.InputConnection.getSurroundingText(int, int, int)",
     "android.view.inputmethod.InputConnection.getTextAfterCursor(int, int)",
     "android.view.inputmethod.InputConnection.getTextBeforeCursor(int, int)",
-    "android.view.inputmethod.InputConnection.setComposingText(java.lang.CharSequence, int)",
-    "android.view.inputmethod.InputConnection.setComposingText(java.lang.CharSequence, int, android.view.inputmethod.TextAttribute)",
     "android.view.inputmethod.InputConnection.takeSnapshot()",
 
     # InputConnectionWrapper
@@ -4068,7 +3998,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.view.textservice.TextServicesManager.newSpellCheckerSession(android.view.textservice.SpellCheckerSession.SpellCheckerSessionParams, java.util.concurrent.Executor, android.view.textservice.SpellCheckerSession.SpellCheckerSessionListener)",
 
     # TranslationManager
-    "android.view.translation.TranslationManager.createOnDeviceTranslator(android.view.translation.TranslationContext, java.util.concurrent.Executor, java.util.function.Consumer)",
     "android.view.translation.TranslationManager.getOnDeviceTranslationSettingsActivityIntent()",
 
     # TranslationRequestValue
@@ -4079,7 +4008,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.view.translation.TranslationResponseValue.getTransliteration()",
 
     # Translator
-    "android.view.translation.Translator.translate(android.view.translation.TranslationRequest, android.os.CancellationSignal, java.util.concurrent.Executor, java.util.function.Consumer)",
 
     # android.webkit
     # ClientCertRequest
@@ -4123,7 +4051,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.webkit.WebView.getWebChromeClient()",
     "android.webkit.WebView.getWebViewRenderProcess()",
     "android.webkit.WebView.getWebViewRenderProcessClient()",
-    "android.webkit.WebView.onCreateVirtualViewTranslationRequests(long[], int[], java.util.function.Consumer)",
     "android.webkit.WebView.onResolvePointerIcon(android.view.MotionEvent, int)",
     "android.webkit.WebView.restoreState(android.os.Bundle)",
     "android.webkit.WebView.saveState(android.os.Bundle)",
@@ -4207,8 +4134,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.widget.EdgeEffect.getBlendMode()",
 
     # ExpandableListView
-    "android.widget.ExpandableListView.getExpandableListPosition(int)",
-    "android.widget.ExpandableListView.getSelectedPosition()",
 
     # ImageView
     "android.widget.ImageView.getDrawable()",
@@ -4280,7 +4205,6 @@ METHOD_CAN_RETURN_NONE = {
     "android.widget.Switch.getTrackTintMode()",
 
     # TabHost
-    "android.widget.TabHost.getCurrentTab()",
     "android.widget.TabHost.getCurrentTabTag()",
     "android.widget.TabHost.getCurrentTabView()",
 
@@ -4333,6 +4257,4 @@ METHOD_CAN_RETURN_NONE = {
     "android.window.SplashScreenView.getIconView()",
 
     # SurfaceSyncGroup
-    "android.window.SurfaceSyncGroup.add(android.view.AttachedSurfaceControl, java.lang.Runnable)",
-    "android.window.SurfaceSyncGroup.add(android.view.SurfaceControlViewHost.SurfacePackage, java.lang.Runnable)",
 }

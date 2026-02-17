@@ -412,7 +412,9 @@ def is_method_present_in_java_lang_object(j_method: Any) -> bool:
     from java.lang import Object  # type: ignore
 
     try:
-        Object.class_.getDeclaredMethod(j_method.getName(), j_method.getParameterTypes())
+        Object.class_.getDeclaredMethod(
+            j_method.getName(), j_method.getParameterTypes()
+        )
         return True
     except jpype.JException:  # java NoSuchMethodException
         return False
@@ -524,6 +526,8 @@ TYPE_NAME_TO_PRIMITIVE_MAP: dict[str, Primitive] = {
     **{p.java_primitive: p for p in PRIMITIVES},
     **{p.java_object: p for p in PRIMITIVES},
 }
+
+JAVA_PRIMITIVE_TYPES = {p.java_primitive for p in PRIMITIVES}
 
 
 def translate_type_name(
@@ -946,6 +950,15 @@ def generate_java_method_stub(
 
         method_signature = generate_method_signature(j_overload)
         if method_signature in METHOD_CAN_RETURN_NONE:
+            if (
+                j_return_type is not None
+                and hasattr(j_return_type, "getName")
+                and (java_primitive := j_return_type.getName()) in JAVA_PRIMITIVE_TYPES
+            ):
+                log.warning(
+                    f"Method '{method_signature}' is whitelisted as potentially returning None, but returns the primitive '{java_primitive}' which cannot be None. Probably this whitelist entry is wrong..."
+                )
+
             ret_type = TypeStr("typing.Union", [ret_type, TypeStr("None")])
 
         signatures.append(
