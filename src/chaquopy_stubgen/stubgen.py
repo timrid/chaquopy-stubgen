@@ -941,18 +941,35 @@ def filter_type_params_appearing_in_args_and_return(
     return valid_j_type_params
 
 
+def param_type_name(p: Any) -> str:
+    t = p.getType()
+    return str(t.getCanonicalName() or t.getName())
+
+
 def generate_method_signature(j_overload: Any) -> str:
     class_name = j_overload.getDeclaringClass().getName()
     method_name = j_overload.getName()
     j_args = j_overload.getParameters()
 
-    def param_type_name(p: Any) -> str:
-        t = p.getType()
-        return str(t.getCanonicalName() or t.getName())
-
     return (
         f"{class_name}.{method_name}({', '.join([param_type_name(p) for p in j_args])})"
     )
+
+
+def method_overload_sort_key(j_overload: Any) -> tuple[int, str]:
+    """
+    Create a sort key for method overloads that ensures consistent ordering.
+    Sorts by: 1) number of parameters (ascending), 2) parameter types (alphabetically)
+    This ensures that overloads are always in the same order across inheritance hierarchies.
+    """
+    j_args = j_overload.getParameters()
+    num_params = len(j_args)
+    
+    # Get parameter type names for secondary sorting
+    param_types = [param_type_name(p) for p in j_args]
+    param_signature = ", ".join(param_types)
+    
+    return (num_params, param_signature)
 
 
 def generate_java_method_stub(
@@ -970,7 +987,7 @@ def generate_java_method_stub(
     is_constructor = name == "__init__"
     is_overloaded = len(j_overloads) > 1
     signatures: list[JavaFunctionSig] = []
-    for i, j_overload in enumerate(sorted(list(j_overloads), key=str)):
+    for i, j_overload in enumerate(sorted(list(j_overloads), key=method_overload_sort_key)):
         j_return_type = None if is_constructor else j_overload.getGenericReturnType()
         j_args = j_overload.getParameters()
         static = False if is_constructor else is_static(j_overload)
