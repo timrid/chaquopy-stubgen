@@ -1189,7 +1189,15 @@ def to_annotated_type(
      - adding imports if necessary
      - using either a standard plain `Type`, a forward `'Type'`, or a `fully.qualified.package.Type`
      - recursively writing out type arguments, if any.
+     - convert "typing.Union" with multiple type args to the more concise "A | B | C" syntax.
     """
+    if type_name.name == "typing.Union" and type_name.type_args:
+        union_args = [
+            to_annotated_type(t, package_name, classes_done, types_used, imports_output)
+            for t in type_name.type_args
+        ]
+        return " | ".join(union_args)
+
     a_type = type_name.name
     if "." in a_type:
         a_type = pysafe_package_path(a_type)
