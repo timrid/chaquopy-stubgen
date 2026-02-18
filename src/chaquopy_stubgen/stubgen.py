@@ -732,8 +732,8 @@ def python_type_var(java_type: Any, uniq_scope_id: str) -> TypeVarStr:
             f"Can not convert to type var {str(java_type)} ({repr(java_type)})"
         )
     bound: TypeStr | None = python_type(java_type_variable_bound(java_type))
-    if bound and bound.name == "java.lang.Object":
-        bound = None
+    # if bound and bound.name == "java.lang.Object":
+    #     bound = None
     java_name = str(java_type.getName())
     return TypeVarStr(
         java_name=java_name, python_name=f"_{uniq_scope_id}__{java_name}", bound=bound
