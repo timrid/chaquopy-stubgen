@@ -75,14 +75,14 @@ from java.lang import Object, Throwable
 def jclass(clsname: str) -> type[Object]: ...
 
 # array.pxi #######################################################################################
-_JAVA_OBJ = typing.Union[Primitive, Object]
+_JAVA_OBJ = Primitive | Object
 
 JAVA_OBJ_T = typing.TypeVar("JAVA_OBJ_T", bound=_JAVA_OBJ)
 
 class JavaArray(Object, typing.Sequence[JAVA_OBJ_T]):
     def __init__(
         self,
-        length_or_value: typing.Union[int, typing.Sequence[JAVA_OBJ_T]],
+        length_or_value: int | typing.Sequence[JAVA_OBJ_T],
     ): ...
     def __len__(self): ...
     @typing.overload
@@ -122,148 +122,140 @@ class JavaArray(Object, typing.Sequence[JAVA_OBJ_T]):
 class JavaArrayJBoolean(JavaArray[jboolean]):
     def __init__(
         self,
-        length_or_value: typing.Union[
-            int, typing.Sequence[typing.Union[jboolean, bool]]
-        ],
+        length_or_value: int | typing.Sequence[jboolean | bool],
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: int,
-        value: typing.Union[jboolean, bool],
+        value: jboolean | bool,
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: slice,
-        value: typing.Sequence[typing.Union[jboolean, bool]],
+        value: typing.Sequence[jboolean | bool],
     ): ...
     def __buffer__(self, flags: int, /) -> memoryview: ...
 
 class JavaArrayJByte(JavaArray[jbyte]):
     def __init__(
         self,
-        length_or_value: typing.Union[int, typing.Sequence[typing.Union[jbyte, int]]],
+        length_or_value: int | typing.Sequence[jbyte | int],
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: int,
-        value: typing.Union[jbyte, int],
+        value: jbyte | int,
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: slice,
-        value: typing.Sequence[typing.Union[jbyte, int]],
+        value: typing.Sequence[jbyte | int],
     ): ...
     def __buffer__(self, flags: int, /) -> memoryview: ...
 
 class JavaArrayJShort(JavaArray[jshort]):
     def __init__(
         self,
-        length_or_value: typing.Union[int, typing.Sequence[typing.Union[jshort, int]]],
+        length_or_value: int | typing.Sequence[jshort | int],
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: int,
-        value: typing.Union[jshort, int],
+        value: jshort | int,
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: slice,
-        value: typing.Sequence[typing.Union[jshort, int]],
+        value: typing.Sequence[jshort | int],
     ): ...
     def __buffer__(self, flags: int, /) -> memoryview: ...
 
 class JavaArrayJInt(JavaArray[jint]):
     def __init__(
         self,
-        length_or_value: typing.Union[int, typing.Sequence[typing.Union[jint, int]]],
+        length_or_value: int | typing.Sequence[jint | int],
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: int,
-        value: typing.Union[jint, int],
+        value: jint | int,
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: slice,
-        value: typing.Sequence[typing.Union[jint, int]],
+        value: typing.Sequence[jint | int],
     ): ...
     def __buffer__(self, flags: int, /) -> memoryview: ...
 
 class JavaArrayJLong(JavaArray[jlong]):
     def __init__(
         self,
-        length_or_value: typing.Union[int, typing.Sequence[typing.Union[jlong, int]]],
+        length_or_value: int | typing.Sequence[jlong | int],
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: int,
-        value: typing.Union[jlong, int],
+        value: jlong | int,
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: slice,
-        value: typing.Sequence[typing.Union[jlong, int]],
+        value: typing.Sequence[jlong | int],
     ): ...
     def __buffer__(self, flags: int, /) -> memoryview: ...
 
 class JavaArrayJFloat(JavaArray[jfloat]):
     def __init__(
         self,
-        length_or_value: typing.Union[
-            int, typing.Sequence[typing.Union[jfloat, float]]
-        ],
+        length_or_value: int | typing.Sequence[jfloat | float],
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: int,
-        value: typing.Union[jfloat, float],
+        value: jfloat | float,
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: slice,
-        value: typing.Sequence[typing.Union[jfloat, float]],
+        value: typing.Sequence[jfloat | float],
     ): ...
     def __buffer__(self, flags: int, /) -> memoryview: ...
 
 class JavaArrayJDouble(JavaArray[jdouble]):
     def __init__(
         self,
-        length_or_value: typing.Union[
-            int, typing.Sequence[typing.Union[jdouble, float]]
-        ],
+        length_or_value: int | typing.Sequence[jdouble | float],
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: int,
-        value: typing.Union[jdouble, float],
+        value: jdouble | float,
     ): ...
     @typing.overload
     def __setitem__(
         self,
         key: slice,
-        value: typing.Sequence[typing.Union[jdouble, float]],
+        value: typing.Sequence[jdouble | float],
     ): ...
     def __buffer__(self, flags: int, /) -> memoryview: ...
 
 class JavaArrayJChar(JavaArray[jchar]):
     def __init__(
         self,
-        length_or_value: typing.Union[
-            int, typing.Sequence[typing.Union[jchar, str]], str
-        ],
+        length_or_value: int | typing.Sequence[jchar | str] | str,
     ): ...
     @typing.overload
     def __setitem__(
@@ -275,7 +267,7 @@ class JavaArrayJChar(JavaArray[jchar]):
     def __setitem__(
         self,
         key: slice,
-        value: typing.Union[typing.Sequence[typing.Union[jchar, str]], str],
+        value: typing.Sequence[jchar | str] | str,
     ): ...
     
 
@@ -356,21 +348,21 @@ def constructor(
     arg_types: typing.Sequence[typing.Type[_JAVA_OBJ]],
     *,
     modifiers: str = "public",
-    throws: typing.Optional[typing.Sequence[typing.Type[Throwable]]] = None,
+    throws: typing.Sequence[typing.Type[Throwable]] | None = None,
 ) -> typing.Callable[[typing.Callable[..., typing.Any]], typing.Callable[..., typing.Any]]: ...
 def method(
     return_type: typing.Type[_JAVA_OBJ],
     arg_types: typing.Sequence[typing.Type[_JAVA_OBJ]],
     *,
     modifiers: str = "public",
-    throws: typing.Optional[typing.Sequence[typing.Type[Throwable]]] = None,
+    throws: typing.Sequence[typing.Type[Throwable]] | None = None,
 ) -> typing.Callable[[typing.Callable[..., typing.Any]], typing.Callable[..., typing.Any]]: ...
 def Override(
     return_type: typing.Type[_JAVA_OBJ],
     arg_types: typing.Sequence[typing.Type[_JAVA_OBJ]],
     *,
     modifiers: str = "public",
-    throws: typing.Optional[typing.Sequence[typing.Type[Throwable]]] = None,
+    throws: typing.Sequence[typing.Type[Throwable]] | None = None,
 ) -> typing.Callable[[typing.Callable[..., typing.Any]], typing.Callable[..., typing.Any]]: ...
 
 # utils.pxi #######################################################################################
@@ -412,7 +404,7 @@ class jlong(IntPrimitive): ...
 
 class FloatPrimitive(NumericPrimitive):
     value: float
-    def __init__(self, value: typing.Union[float, int], truncate: bool = False) -> None: ...
+    def __init__(self, value: float | int, truncate: bool = False) -> None: ...
 
 class jfloat(FloatPrimitive): ...
 class jdouble(FloatPrimitive): ...
