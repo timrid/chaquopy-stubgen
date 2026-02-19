@@ -2,10 +2,10 @@ import pathlib
 
 
 def add_chaquopy_bindings_to_java_package(
-    output_path: pathlib.Path, import_output: list[str], class_output: list[str]
+    output_path: pathlib.Path, import_output: set[str], class_output: list[str]
 ):
     """Add the chaquopy api to the main 'java' package"""
-    import_output.append("""\
+    import_output.add("""\
 from java.chaquopy import (
     cast,
     detach,
@@ -18,7 +18,7 @@ from java.chaquopy import (
     method,
     Override,
 )""")
-    import_output.append("""\
+    import_output.add("""\
 from java.primitive import (
     jvoid,
     jboolean,

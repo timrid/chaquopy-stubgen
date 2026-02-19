@@ -1,11 +1,9 @@
 import argparse
-import importlib
 import logging
-from glob import glob
+import time
+from pathlib import Path
 
-import jpype.imports  # type: ignore
-
-from . import generate_java_stubs
+from chaquopy_stubgen.stubgen import convert_jar_to_python_stubs
 
 log = logging.getLogger(__name__)
 
@@ -16,10 +14,10 @@ if __name__ == "__main__":
         description="Generate Python Type Stubs for Java classes that are optimized for chaquopy."
     )
     parser.add_argument(
-        "prefixes",
+        "jars",
         type=str,
         nargs="+",
-        help="package prefixes to generate stubs for (e.g. org.myproject)",
+        help="List of .jar or .aar files to include in the classpath.",
     )
     parser.add_argument(
         "--jvmpath",
@@ -27,38 +25,25 @@ if __name__ == "__main__":
         help='path to the JVM ("libjvm.so", "jvm.dll", ...) (default: use system default JVM)',
     )
     parser.add_argument(
-        "--classpath",
-        type=str,
-        default=".",
-        help='java class path to use, separated by ":". '
-        "glob-like expressions (e.g. dir/*.jar) are supported (default: .)",
-    )
-    parser.add_argument(
         "--output-dir",
         type=str,
-        default=".",
+        default="./dist/stubs",
         help="path to write stubs to (default: .)",
-    )
-    parser.add_argument(
-        "--no-javadoc",
-        dest="with_javadoc",
-        action="store_false",
-        default=True,
-        help="do not generate docstrings from JavaDoc where available",
     )
 
     args = parser.parse_args()
 
-    classpath = [c for c_in in args.classpath.split(":") for c in glob(c_in)]
+    output_dir = Path(args.output_dir)
+    jars = [Path(jar) for jar in args.jars]
+    if len(args.jars) == 0:
+        log.error("No JAR files provided.")
+        exit(1)
+    elif len(args.jars) > 1:
+        log.error("Multiple JAR files currently not supported.")
+        exit(1)
 
-    log.info("Starting JPype JVM with classpath " + str(classpath))
-    jpype.startJVM(jvmpath=args.jvmpath, classpath=classpath)  # noqa: exists
-    prefix_packages = [importlib.import_module(prefix) for prefix in args.prefixes]
-    generate_java_stubs(
-        prefix_packages,  # type: ignore
-        output_dir=args.output_dir,
-        include_javadoc=args.with_javadoc,
-    )
-
-    log.info("Generation done.")
-    jpype.java.lang.Runtime.getRuntime().halt(0)
+    log.info(f"Generating stubs for {jars[0]} to {output_dir}")
+    t0 = time.perf_counter()
+    convert_jar_to_python_stubs(jars[0], output_dir, jvmpath=args.jvmpath)
+    elapsed = time.perf_counter() - t0
+    log.info(f"Generation done in {elapsed:.1f}s.")

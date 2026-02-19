@@ -1,46 +1,27 @@
-"""chaquopy-stubgen
-A PEP484 python stub generator for Java modules using the Chaquopy import system.
-Originally based on mypy stubgenc and stubgenj.
+"""
+ASM-based Java stub generator.
 
-Copyright (c) CERN 2020-2021
-Copyright (c) Tim Riddemann 2025
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the "Software"), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-of the Software, and to permit persons to whom the Software is furnished to do
-so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-Authors:
-    M. Hostettler   <michi.hostettler@cern.ch>
-    P. Elson        <philip.elson@cern.ch>
-    T. Riddermann
+Generates Python type stubs from Java .class files using the ASM bytecode library,
+without requiring a running JVM with the target classes loaded (only ASM itself is needed).
 """
 
-import collections
+from __future__ import annotations
+
+import concurrent.futures
 import dataclasses
 import keyword
 import logging
-import pathlib
-import re
-from typing import Any, Generator, Union
+import multiprocessing
+import shutil
+import zipfile
+from pathlib import Path
 
 import jpype
+import jpype.imports
 
 from chaquopy_stubgen.chaquopy_bindings import add_chaquopy_bindings_to_java_package
 from chaquopy_stubgen.whitelists import METHOD_CAN_RETURN_NONE
+
 
 log = logging.getLogger(__name__)
 
@@ -74,14 +55,6 @@ class JavaFunctionSig:
     type_vars: list[TypeVarStr]
 
 
-@dataclasses.dataclass(frozen=True)
-class Javadoc:
-    description: str
-    ctors: str = ""
-    methods: dict[str, str] = dataclasses.field(default_factory=dict)
-    fields: dict[str, str] = dataclasses.field(default_factory=dict)
-
-
 EXTRA_RESERVED_WORDS = {"exec", "print"}  # Removed in Python 3.0
 
 
@@ -104,1068 +77,6 @@ def pysafe(s: str) -> str | None:
     if is_reserved_word(s):
         return s + "_"
     return s
-
-
-def is_pseudo_package(package: jpype.JPackage) -> bool:
-    """
-    Return True if the package is an (empty) "pseudo package" - a package that neither contains classes,
-    nor sub-packages.
-
-    Such packages are not importable in Java. Still, JPype can generate them e.g. for directories that are only present
-    in Javadoc JARs but not in source JARs (e.g. "class-use" in Guava)
-    """
-    return len(dir(package)) == 0 or "$" in package.__name__
-
-
-def package_and_sub_packages(
-    package: jpype.JPackage,
-) -> Generator[jpype.JPackage, None, None]:
-    """Walk the java package tree and collect all packages in the JVM which are descendants of the given package."""
-    yield package
-    for name in dir(package):
-        try:
-            item = getattr(package, name)
-            if isinstance(item, jpype.JPackage) and not is_pseudo_package(item):
-                yield from package_and_sub_packages(item)
-        except Exception as e:
-            log.warning(f"skipping {package.__name__}.{name}: {e}")
-
-
-def generate_java_stubs(
-    parent_packages: list[jpype.JPackage],
-    output_dir: Union[str, pathlib.Path] = ".",
-    include_javadoc: bool = True,
-) -> None:
-    """
-    Main entry point. Recursively generate stubs for the provided packages and all sub-packages.
-    This method assumes that a JPype JVM was started with a proper classpath and the JPype import system is enabled.
-
-    Errors in stub generation are treated in a lenient way; failing to generate stubs for one or more java classes
-    will not stop stub generation for other classes.
-    """
-    packages: dict[str, jpype.JPackage] = {}
-    for pkg in parent_packages:
-        packages.update({pkg.__name__: pkg for pkg in package_and_sub_packages(pkg)})
-
-    log.info(f"Collected {len(packages)} packages ...")
-
-    # Map package names to a set of direct subpackages
-    # (e.g {'foo.bar': {'wibble', 'wobble'}}).
-    subpackages = collections.defaultdict(set)
-    output_path = pathlib.Path(output_dir)
-    # Prepare a dictionary for *all* package names (including the parents of
-    # the actual packages that we wish to generate stubs for) which maps to the
-    # path of the appropriate __init__.pyi stubfile.
-    stubfile_packages_paths: dict[str, pathlib.Path] = {}
-    for pkg_name in packages:
-        pkg_parts = pkg_name.split(".")
-
-        submodule_path = output_path
-        submodule_name = ""
-        for pkg_part in pkg_parts:
-            if not submodule_name:
-                submodule_path = submodule_path / f"{pkg_part}-stubs"
-            else:
-                submodule_path = submodule_path / pkg_part
-
-            if not submodule_name:
-                submodule_name = pkg_part
-            else:
-                submodule_name += f".{pkg_part}"
-
-            if "." in submodule_name:
-                parent, name = submodule_name.rsplit(".", 1)
-                subpackages[parent].add(name)
-
-            stubfile_packages_paths[submodule_name] = submodule_path / "__init__.pyi"
-
-    for pkg_name, stubfile_path in stubfile_packages_paths.items():
-        stubfile_path.parent.mkdir(parents=True, exist_ok=True)
-
-        pkg = packages.get(pkg_name)
-        if pkg is not None:
-            generate_stubs_for_java_package(
-                pkg, stubfile_path, sorted(subpackages[pkg_name]), include_javadoc
-            )
-
-
-def filter_class_names_in_package(package_name: str, types: set[str]) -> set[str]:
-    """From the provided list of class names, filter and return those which are DIRECT descendants of the package"""
-    local_types: set[str] = set()
-    for typ in types:
-        type_package, _, local_name = typ.rpartition(".")
-        if type_package == package_name and "$" not in local_name:
-            local_types.add(local_name)
-    return local_types
-
-
-def package_classes(package: jpype.JPackage) -> Generator[jpype.JClass]:
-    """Collect and return all classes which are DIRECT descendants of the given package."""
-    for name in dir(package):
-        try:
-            item: jpype.JClass = getattr(package, name)
-            if isinstance(item, jpype.JClass):
-                yield item
-        except Exception as e:
-            log.warning(f"skipping class {package.__name__}.{name}: {e}")
-
-
-def provide_customizer_stubs(
-    customizers_used: set[type], import_output: list[str], output_file: pathlib.Path
-) -> None:
-    """Write stubs for used JPype customizers."""
-    # in the future, JPype (2.0?) will support customizers loaded from JAR files, inaccessible without the run-time
-    # import system of JPype. Once this happens, we will have to extract the stubs and dump them to the file system
-    # here.
-    # But for the time being, keep things simple and just add an import ...
-    for c in customizers_used:
-        import_output.append(f"from {c.__module__} import {c.__qualname__}")
-
-
-def generate_stubs_for_java_package(
-    package: jpype.JPackage,
-    output_file: pathlib.Path,
-    subpackages: list[str],
-    include_javadoc=False,
-) -> None:
-    """Generate stubs for a single Java package, represented as a python package with a single __init__ module."""
-    pkg_name = package.__name__
-    java_classes = sorted(package_classes(package), key=lambda pkg: pkg.__name__)
-    log.info(
-        f"Generating stubs for {pkg_name} ({len(java_classes)} classes, {len(subpackages)} subpackages)"
-    )
-
-    import_output: list[str] = []
-    class_output: list[str] = []
-
-    classes_done: set[str] = set()
-    classes_used: set[str] = set()
-    classes_failed: set[str] = set()
-    customizers_used: set[type] = set()
-    while java_classes:
-        java_classes_to_generate = [
-            c for c in java_classes if dependencies_satisfied(package, c, classes_done)
-        ]
-        if not java_classes_to_generate:
-            # some inner class cases - will generate them with full names
-            java_classes_to_generate = java_classes
-        for cls in sorted(java_classes_to_generate, key=lambda c: c.__name__):
-            try:
-                generate_java_class_stub(
-                    package,
-                    cls,
-                    include_javadoc,
-                    classes_done,
-                    classes_used,
-                    customizers_used,
-                    output=class_output,
-                    imports_output=import_output,
-                )
-            # exception during class loading e.g. missing dependencies
-            # (spark...)
-            except jpype.JException as e:
-                log.warning(f"Skipping {cls} due to {e}")
-                classes_failed.add(simple_class_name_of(cls))
-            java_classes.remove(cls)
-        # Collect all classes in this java package which are referenced by other class stubs, but have not yet been
-        # generated. To avoid unsatisfied type references in the stubs, we have to generate stubs for them:
-        #  - first, we attempt to get them by explicitly reading the attribute from the JPackage object. This may work
-        #    for certain protected or module internal (Java 11) classes.
-        #  - failing that, we generate an empty stub.
-        missing_private_classes = (
-            filter_class_names_in_package(pkg_name, classes_used) - classes_done
-        )
-        for missing_private_class in sorted(missing_private_classes):
-            cls = None
-            try:
-                if missing_private_class not in classes_failed:
-                    cls = getattr(package, missing_private_class, None)
-            # exception during class loading e.g. missing dependencies
-            # (spark...)
-            except jpype.JException as e:
-                log.warning(
-                    f"Skipping missing class {missing_private_class} due to {e}"
-                )
-
-            if cls is not None:
-                if cls not in java_classes:
-                    java_classes.append(cls)
-            else:
-                # This can happen if a public class refers to a private or package-private class directly,
-                # e.g. as return type. In Java, such return values are not accessible:
-                #   public class OuterClass {
-                #      public static InnerClass test() {
-                #          return new InnerClass();
-                #      }
-                #      private static class InnerClass {
-                #          public void foo() { }
-                #      }
-                #   }
-                #
-                # From another class:
-                #    OuterClass.test() - works
-                #    OuterClass.InnerClass variable = OuterClass.test() - does not work
-                #    OuterClass.test().foo() - does not work
-                #
-                # So the way to mimic this behavior in the stubs is to generate an empty "fake" stub for the private
-                # class "OuterClass.InnerClass".
-                log.warning(
-                    f"reference to missing class {missing_private_class} - generating empty stub"
-                )
-                class_output.append("")
-                generate_empty_class_stub(
-                    missing_private_class,
-                    classes_done=classes_done,
-                    output=class_output,
-                )
-
-    for subpackage_name in subpackages:
-        import_output.append(f"import {pkg_name}.{subpackage_name}")
-
-    if customizers_used:
-        provide_customizer_stubs(customizers_used, import_output, output_file)
-
-    if pkg_name == "java":
-        add_chaquopy_bindings_to_java_package(
-            output_file.parent, import_output, class_output
-        )
-
-    output = []
-
-    for line in sorted(set(import_output)):
-        output.append(line)
-
-    output.extend([""] * 2)
-    for line in class_output:
-        output.append(line)
-    with open(output_file, "w", encoding="utf-8") as file:
-        for line in output:
-            file.write(f"{line}\n")
-
-
-def simple_class_name_of(j_class: jpype.JClass) -> str:
-    return str(j_class.class_.getName()).split(".")[-1]
-
-
-def is_java_class(obj: type) -> bool:
-    """Check if a type is a 'real' Java class. This excludes synthetic/anonymous Java classes."""
-    if not isinstance(obj, jpype.JClass) or not hasattr(obj, "class_"):
-        return False
-    if (
-        obj.class_.isAnonymousClass()
-        or obj.class_.isLocalClass()
-        or obj.class_.isSynthetic()
-    ):
-        return False
-    return True
-
-
-def dependencies_satisfied(
-    package: jpype.JPackage, j_class: jpype.JClass, done: set[str]
-):
-    """
-    Check if all supertypes of the provided class and any inner classes are already generated.
-    In python, unlike in Java, the definition order of classes within a module matters.
-    """
-    try:
-        super_types = [python_type(b) for b in java_super_types(j_class)]
-    # exception during class loading of superclasses e.g. missing dependencies
-    # (spark...)
-    except jpype.JException:
-        return False
-    for super_type in super_types:
-        super_type_name = super_type.name
-        super_type_module = super_type_name[: super_type_name.rindex(".")]
-        if super_type_module == package.__name__:
-            super_type_local_name = super_type_name[len(super_type_module) + 1 :]
-            if super_type_local_name not in done:
-                return False
-    # check dependencies of nested classes
-    obj_dict = vars(j_class)
-    for member in obj_dict.values():
-        if is_java_class(member):
-            if not dependencies_satisfied(package, member, done):
-                return False
-    return True
-
-
-def java_super_types(j_class: jpype.JClass) -> list[Any]:
-    """Get all supertypes of the provided Java class, up to java.lang.Object"""
-    super_types = [j_class.class_.getGenericSuperclass()] + list(
-        j_class.class_.getGenericInterfaces()
-    )
-    if (
-        super_types[0] is None
-    ):  #  or super_types[0].getTypeName() == "java.lang.Object":
-        del super_types[0]
-    return super_types
-
-
-def is_method_present_in_java_lang_object(j_method: Any) -> bool:
-    """
-    Checks is a particular method signature is present on java.lang.Object.
-    This is used to find the method to call on java FunctionalInterfaces, as according to the JLS [1], these methods
-    are excluded from the "1 abstract method" rule of functional interfaces.
-
-    [1] https://docs.oracle.com/javase/specs/jls/se8/html/jls-9.html#jls-9.8
-    """
-    from java.lang import Object  # type: ignore
-
-    try:
-        Object.class_.getDeclaredMethod(
-            j_method.getName(), j_method.getParameterTypes()
-        )
-        return True
-    except jpype.JException:  # java NoSuchMethodException
-        return False
-
-
-def invoked_method_on_functional_interface(j_class: Any) -> Any:
-    """Get the actual java method to be invoked on a Java FunctionalInterface"""
-    for j_method in j_class.getDeclaredMethods():
-        if (
-            is_public(j_method)
-            and is_abstract(j_method)
-            and not is_static(j_method)
-            and not j_method.isSynthetic()
-            and not is_method_present_in_java_lang_object(j_method)
-        ):
-            return j_method
-
-
-def resolve_functional_interface_method_type(
-    j_type: Any, class_type_params: list[Any], type_args: list[TypeStr] | None
-):
-    if j_type in class_type_params and type_args is not None:
-        # it is a type variable - resolve to the actual type argument
-        idx = class_type_params.index(j_type)
-        return type_args[idx]
-    else:
-        # it is something else (e.g. a java type) - resolve in the usual way
-        return python_type(j_type)
-
-
-def mangle_callable_type_args(
-    j_class: Any, type_args: list[TypeStr] | None
-) -> list[TypeStr] | None:
-    """
-    Generate sensible type arguments for typing.Callable.
-
-    The JPype customizer that maps java FunctionalInterface to python Callable is a special story when it comes to
-    generic type arguments.
-
-    Since FunctionalInterfaces in Java are classes, type arguments are given at the class level, e.g.
-    ```java
-    @FunctionalInterface
-    public interface Comparator<T> {
-        int compare(T o1, T o2);
-    }
-    ```
-    However, the type arguments for typing.Callable depend BOTH on the type arguments of the class AND the signature
-    of the (only) method in the FunctionalInterface, e.g.
-    ```python
-    typing.Callable[[T, T], int]
-    ```
-    for the above example.
-
-    TODO - NOT IMPLEMENTED YET:
-    To make things even more complicated, FunctionalInterface classes can inherit from other FunctionalInterfaces,
-    fixing or specifying certain type parameters:
-    ```java
-    @FunctionalInterface
-    public interface BinaryOperator<T> extends BiFunction<T,T,T> {  }
-
-    @FunctionalInterface
-    public interface BiFunction<T, U, R> {
-        R apply(T t, U u);
-    }
-    ```
-    which should result in
-    ```python
-    typing.Callable[[T, T], T]
-    ```
-
-    """
-    invoked_method = invoked_method_on_functional_interface(j_class)
-    if invoked_method is None:
-        return None  # TODO: implement inheritance case ...
-    j_class_type_parameters = list(j_class.getTypeParameters())
-    resolved_param_types = [
-        resolve_functional_interface_method_type(
-            param_type, j_class_type_parameters, type_args
-        )
-        for param_type in invoked_method.getGenericParameterTypes()
-    ]
-    resolved_return_type = resolve_functional_interface_method_type(
-        invoked_method.getGenericReturnType(), j_class_type_parameters, type_args
-    )
-    return [TypeStr("", resolved_param_types), resolved_return_type]
-
-
-@dataclasses.dataclass
-class Primitive:
-    java_primitive: str
-    java_object: str
-    python_primitive: str
-    python_type: str
-
-
-PRIMITIVES: list[Primitive] = [
-    Primitive("void", "java.lang.Void", "java.jvoid", "None"),
-    Primitive("byte", "java.lang.Byte", "java.jbyte", "int"),
-    Primitive("short", "java.lang.Short", "java.jshort", "int"),
-    Primitive("int", "java.lang.Integer", "java.jint", "int"),
-    Primitive("long", "java.lang.Long", "java.jlong", "int"),
-    Primitive("boolean", "java.lang.Boolean", "java.jboolean", "bool"),
-    Primitive("double", "java.lang.Double", "java.jdouble", "float"),
-    Primitive("float", "java.lang.Float", "java.jfloat", "float"),
-    Primitive("char", "java.lang.Character", "java.jchar", "str"),
-]
-
-TYPE_NAME_TO_PRIMITIVE_MAP: dict[str, Primitive] = {
-    **{p.java_primitive: p for p in PRIMITIVES},
-    **{p.java_object: p for p in PRIMITIVES},
-}
-
-JAVA_PRIMITIVE_TYPES = {p.java_primitive for p in PRIMITIVES}
-
-
-def translate_type_name(
-    type_name: str,
-    type_args: list[TypeStr] | None = None,
-    is_argument: bool = False,
-    is_array_param: bool = False,
-) -> TypeStr:
-    """
-    Translate basic Java types to python types. Note that this conversion is applied for ALL types, no matter if they
-    appear as method argument types, field types, return types, super types, etc.
-
-    Converted types in all cases:
-     - Java primitives (e.g. int) and Java boxed primitives (e.g. Integer)
-     - Java void -> None
-     - java.lang.String -> str, but ONLY IF JPype convertStrings flag is enabled
-     - java.lang.Object -> Any
-     - java.lang.Class -> Type
-
-    Additionally, implicitConversions=True indicates that the type is used as METHOD ARGUMENT. In this case we also
-    apply the mangling by handleImplicitConversions() to account for JPype implicit type conversions.
-    """
-    union: list[TypeStr] = []
-
-    if type_name in TYPE_NAME_TO_PRIMITIVE_MAP:
-        primitive = TYPE_NAME_TO_PRIMITIVE_MAP[type_name]
-        if is_array_param and is_argument:
-            raise ValueError(
-                f"Type {type_name} cannot be both an array parameter and an argument type."
-            )
-
-        if is_array_param:
-            union.append(TypeStr(primitive.python_primitive))
-        else:
-            union.append(TypeStr(primitive.python_type))
-
-        if is_argument:
-            # implicit conversions
-            union.append(TypeStr(primitive.python_primitive))
-            union.append(TypeStr(primitive.java_object))
-
-    if type_name == "java.lang.String":
-        if is_array_param:
-            union.append(TypeStr("java.lang.String"))
-        else:
-            union.append(TypeStr("str"))
-            if is_argument:
-                union.append(TypeStr("java.lang.String"))
-    if type_name == "java.lang.Class":
-        union.append(TypeStr("typing.Type", type_args))
-    if type_name == "java.lang.Object":
-        union.append(TypeStr("java.lang.Object"))
-        if is_argument:
-            union.append(TypeStr("int"))
-            union.append(TypeStr("bool"))
-            union.append(TypeStr("float"))
-            union.append(TypeStr("str"))
-
-    if len(union) == 1:
-        return TypeStr(union[0].name, union[0].type_args)
-    if len(union) > 1:
-        return TypeStr("typing.Union", union)
-    return TypeStr(type_name, type_args)
-
-
-PARAMETER_TO_ARRAY_TYPE_MAP: dict[str, str] = {
-    "java.jboolean": "java.chaquopy.JavaArrayJBoolean",
-    "java.jbyte": "java.chaquopy.JavaArrayJByte",
-    "java.jshort": "java.chaquopy.JavaArrayJShort",
-    "java.jint": "java.chaquopy.JavaArrayJInt",
-    "java.jlong": "java.chaquopy.JavaArrayJLong",
-    "java.jfloat": "java.chaquopy.JavaArrayJFloat",
-    "java.jdouble": "java.chaquopy.JavaArrayJDouble",
-    "java.jchar": "java.chaquopy.JavaArrayJChar",
-}
-
-
-def translate_java_array_type(
-    java_type: Any, type_vars: list[TypeVarStr] | None, is_argument: bool
-) -> TypeStr:
-    """
-    Translate a Java array type to python type.
-    """
-    element_type = java_array_component_type(java_type)
-    python_element_type = python_type(element_type, type_vars, is_array_param=True)
-
-    if python_element_type.name in PARAMETER_TO_ARRAY_TYPE_MAP:
-        return TypeStr(PARAMETER_TO_ARRAY_TYPE_MAP[python_element_type.name])
-    return TypeStr("java.chaquopy.JavaArray", [python_element_type])
-
-
-def java_array_component_type(java_type: Any) -> Any:
-    """
-    Get the component type of a java array type (parametrized type for generic arrays, otherwise "standard" type)
-    :param javaType: the array type
-    :return: the component type
-    """
-    from java.lang.reflect import GenericArrayType  # type: ignore
-
-    if isinstance(java_type, GenericArrayType):
-        return java_type.getGenericComponentType()
-    else:
-        return java_type.getComponentType()
-
-
-def python_type(
-    java_type: Any,
-    type_vars: list[TypeVarStr] | None = None,
-    is_argument: bool = False,
-    is_array_param: bool = False,
-) -> TypeStr:
-    """
-    Translate a (possibly generic/parametrized) Java type to a python type, represented as a TypeStr.
-
-    isArgument=True indicates that the type is used as a METHOD ARGUMENT. In this case, JPype applies extra implicit
-    type conversions to be handled (see handleImplicitConversions())
-
-    Note that due to the differences of the Java and the python generic typing system, it may not always be possible
-    to represent a Java parametrized type fully as a python type. In such case, this method will generate a python
-    type which covers the Java type (but may be more permissive than the Java type).
-
-    Java arrays are represented as python Lists, as jpype.JArray is currently not Generic.
-    """
-    from java.lang.reflect import (  # type: ignore
-        GenericArrayType,
-        ParameterizedType,
-        TypeVariable,
-        WildcardType,
-    )
-
-    if java_type is None:
-        return TypeStr("None")
-    if type_vars is None:
-        type_vars = []
-    if isinstance(java_type, ParameterizedType):
-        return translate_type_name(
-            str(java_type.getRawType().getTypeName()),
-            type_args=[
-                python_type(arg, type_vars, is_argument, is_array_param)
-                for arg in java_type.getActualTypeArguments()
-            ],
-            is_argument=is_argument,
-            is_array_param=is_array_param,
-        )
-    elif isinstance(java_type, TypeVariable):
-        j_var_name = str(java_type.getName())
-        matching_vars = [tv for tv in type_vars if tv.java_name == j_var_name]
-        if len(matching_vars) == 1:  # using a known type variable
-            return TypeStr(matching_vars[0].python_name)
-        else:
-            return python_type(java_type_variable_bound(java_type), type_vars)
-    elif isinstance(java_type, WildcardType):
-        # Java wildcard types, e.g. "? extends Foo". We do not support a feature-complete conversion to the python
-        # type system yet, which may anyway not be possible in complex cases with multiple bounds.
-        # At the moment we just take the first upper bound, if it is present, otherwise the first lower bound.
-        # E.g. "? extends Foo & Bar & Spam" will become "Foo" while "? super
-        # Eggs" will become "Eggs"
-        j_bound = java_type.getUpperBounds()[0]
-        if j_bound.getTypeName() == "java.lang.Object":
-            j_lower_bounds = java_type.getLowerBounds()
-            if j_lower_bounds:
-                j_bound = j_lower_bounds[0]
-        return python_type(j_bound, type_vars)
-    elif isinstance(java_type, GenericArrayType) or java_type.isArray():
-        return translate_java_array_type(java_type, type_vars, is_argument=is_argument)
-    else:
-        return translate_type_name(
-            str(java_type.getName()),
-            is_argument=is_argument,
-            is_array_param=is_array_param,
-        )
-
-
-def python_type_var(java_type: Any, uniq_scope_id: str) -> TypeVarStr:
-    """
-    Generate python TypeVar definitions for the provided parametrized Java type. This is complicated by the fact that
-    in Java, type variables are defined implictly on the fly, while in python they must be pre-defined (TypeVar). Also,
-    type variable bounds are defined inline in Java when USING type variables, while in python they must be defined
-    when DECLARING TypeVars.
-
-    To avoid name clashes, the python TypeVars are prefixed with an unique identifier of the scope.
-
-    For example, the Java class definition
-    ```
-    class EnumMap<K extends Enum, V> extends ...
-    ```
-    becomes
-    ```
-    _EnumMap__K = typing.TypeVar('_EnumMap__K', bound=java.lang.Enum)  # <K>
-    _EnumMap__V = typing.TypeVar('_EnumMap__V')  # <V>
-    class EnumMap(...., typing.Generic[_EnumMap__K, _EnumMap__V]):
-    ```
-
-    Note that due to the differences of the Java and the python generic typing system, it may not always be possible
-    to represent a Java parametrized type fully as a TypeVar. In such case, this method will generate a python
-    TypeVar which covers the Java type (but may be more permissive than the Java type).
-    """
-    from java.lang.reflect import TypeVariable  # type: ignore
-
-    if not isinstance(java_type, TypeVariable):
-        raise RuntimeError(
-            f"Can not convert to type var {str(java_type)} ({repr(java_type)})"
-        )
-    bound: TypeStr | None = python_type(java_type_variable_bound(java_type))
-    if bound and bound.name == "java.lang.Object":
-        bound = None
-    java_name = str(java_type.getName())
-    return TypeVarStr(
-        java_name=java_name, python_name=f"_{uniq_scope_id}__{java_name}", bound=bound
-    )
-
-
-def java_type_variable_bound(java_type: Any) -> Any:
-    """
-    Get the bound to use for a particular Java type variable or parametrized type.
-
-    Java type variables and wildcard types can have multiple bounds, e.g. "? extends Foo & Bar & Eggs".
-    The python type system can not represent this situation, so for now we just pick the first bound.
-
-    Also, java type bounds can be nested, e.g. "E extends Enum<E>". This is not supported by stubgenj at the
-    moment. We generate "E" with a bound of "Enum" in this case.
-    """
-    from java.lang.reflect import ParameterizedType  # type: ignore
-
-    j_bound = java_type.getBounds()[0]
-    if isinstance(j_bound, ParameterizedType):
-        j_bound = j_bound.getRawType()
-    return j_bound
-
-
-def infer_arg_name(java_type: Any, prev_args: list[ArgSig]) -> str:
-    """
-    Infer a 'reasonable' name for function arguments, based on the type of the argument.
-    The names are derived from the argument types, by de-capitalizing their (local) names e.g.
-       def findParameters(self, parametersRequest: cern.lsa.domain.settings.ParametersRequest)
-    If a method takes multiple arguments of the same type, we add "2", "3", ... starting from the second one:
-       def updateElementName(self, string: str, string2: str)
-    If an argument is a Java array, we add "Array" to the base type name:
-       def insertMeasuredTwiss(self, measuredTwissArray: typing.list[cern.lsa.domain.optics.MeasuredTwiss])
-    If all else fails, we call the arguments "arg0", "arg1", ...
-
-    Note that if the java class file contains parameter name information, it will be used instead of the
-    guess provided by this function. This is an optional Java feature that has to be enabled at build time.
-    """
-    if java_type is None:
-        return f"arg{len(prev_args)}"
-
-    typename = str(java_type.getTypeName())
-    is_array = typename.endswith("[]")
-    typename = typename.split("<")[0].split("$")[-1].split(".")[-1].replace("[]", "")
-    typename = typename[:1].lower() + typename[1:]
-    if is_array:
-        typename += "Array"
-    prev_args_of_type = sum(
-        [bool(re.match(typename + r"\d*", prev.name)) for prev in prev_args]
-    )
-    if prev_args_of_type == 0:
-        return typename
-    else:
-        return typename + str(prev_args_of_type + 1)
-
-
-def is_static(member: Any) -> bool:
-    """Check if a Java class member is static (class function, field, ...)."""
-    from java.lang.reflect import Modifier  # type: ignore
-
-    return member.getModifiers() & Modifier.STATIC > 0
-
-
-def is_public(member: Any) -> bool:
-    """Check if a Java class member is public."""
-    from java.lang.reflect import Modifier  # type: ignore
-
-    return member.getModifiers() & Modifier.PUBLIC > 0
-
-
-def is_abstract(member: Any) -> bool:
-    """Check if a Java class member is public."""
-    from java.lang.reflect import Modifier  # type: ignore
-
-    return member.getModifiers() & Modifier.ABSTRACT > 0
-
-
-def split_method_overload_javadoc(
-    signatures: list[JavaFunctionSig], javadoc: str
-) -> list[str]:
-    """Split Javadoc by overload signature. The returned list has the same indices as the `signatures` list."""
-    IDENTIFIER_REGEX = r"[a-zA-Z0-9_?]+"
-    TYPE_REGEX = r"[a-zA-Z0-9_?.,:`~\s]+(<[a-zA-Z0-9_?.,:~\s<>\[\]/=-]+>)?`?(\[\])*\s?"
-    GENERIC_ARG_REGEX = (
-        rf"[a-zA-Z0-9_?]+( (super {TYPE_REGEX})| (extends {TYPE_REGEX}))?"
-    )
-    ARG_SEPARATOR = r",\s?"
-    signature_regex_list = []
-
-    for signature in signatures:
-        # Create a regex that matches signature
-        # (we unescape html escapes &lt; &gt; &nbsp; to <, >, " " to make the regex easier to read
-        # The start of the signature: modifiers (access, default, abstract,
-        # etc.)
-        signature_regex = r"(default\s)?(public|protected|private)?\s?"
-
-        # Add static if this signature for a static method
-        if signature.static:
-            signature_regex += r"static\s"
-
-        # If there type variables, add a regex that can match <A, B, C extends SomeClass>
-        # (where the number of type variables is fixed to the number in the signature)
-        if len(signature.type_vars) > 0:
-            signature_regex += f"<{
-                ARG_SEPARATOR.join([GENERIC_ARG_REGEX] * len(signature.type_vars))
-            }>\\s"
-
-        # Next is the return type of the method, which is extremely hard to unify exactly due to html links,
-        # typing.Union sometimes being used, etc. so make it match any type
-        signature_regex += TYPE_REGEX
-
-        # Next is the signature name
-        signature_regex += r"\s?" + signature.name
-
-        # Skip the self argument
-        args = signature.args
-        if len(args) > 0 and args[0].arg_type is None:
-            args = args[1:]
-
-        # Create a regex that matches (int arg, SomeClass arg2, int[] arrayArg)
-        # (where the number of arguments is fixed to the number in the signature
-        signature_regex += (
-            r"\s?\("
-            + ARG_SEPARATOR.join([TYPE_REGEX + " " + IDENTIFIER_REGEX] * len(args))
-            + r"\)"
-        )
-        signature_regex_list.append(re.compile(signature_regex))
-    javadoc_lines = javadoc.split("\n")
-    line = 0
-    signature_index = None
-    out_lines: list[list[str]] = [[] for _ in signatures]
-
-    while line < len(javadoc_lines):
-        javadoc_line = javadoc_lines[line]
-        for i, regex in enumerate(signature_regex_list):
-            # check if the current line matches the signature for any overloads
-            match = re.fullmatch(regex, javadoc_line)
-            if match is not None:
-                # it matches, so skip to next line and set the signature
-                # the javadoc is for to i
-                signature_index = i
-                line = line + 2
-                break
-        if signature_index is not None and line < len(javadoc_lines):
-            # add the line to the current overload javadoc
-            out_lines[signature_index].append(javadoc_lines[line])
-        line = line + 1
-    return ["\n".join(lines) for lines in out_lines]
-
-
-def count_typevar_occurrences(java_type: Any, typevar_name: str) -> int:
-    """Count how many times a specific type variable appears in a Java type."""
-    from java.lang.reflect import (  # type: ignore
-        GenericArrayType,
-        ParameterizedType,
-        TypeVariable,
-        WildcardType,
-    )
-
-    if java_type is None:
-        return 0
-    if isinstance(java_type, TypeVariable):
-        return 1 if str(java_type.getName()) == typevar_name else 0
-    elif isinstance(java_type, ParameterizedType):
-        return sum(
-            count_typevar_occurrences(arg, typevar_name)
-            for arg in java_type.getActualTypeArguments()
-        )
-    elif isinstance(java_type, WildcardType):
-        bounds = list(java_type.getUpperBounds()) + list(java_type.getLowerBounds())
-        return sum(count_typevar_occurrences(b, typevar_name) for b in bounds)
-    elif isinstance(java_type, GenericArrayType) or java_type.isArray():
-        return count_typevar_occurrences(
-            java_array_component_type(java_type), typevar_name
-        )
-    return 0
-
-
-def filter_type_params_appearing_in_args_and_return(
-    j_type_params: list[Any], j_return_type: Any, j_args: list[Any]
-) -> list[Any]:
-    """
-    Filter type parameters to only include those that are meaningfully used.
-
-    This prevents 'TypeVar appears only once' warnings from type checkers.
-    A TypeVar is kept if:
-    - It appears in both arguments AND return type, OR
-    - It appears multiple times in arguments (e.g., Objects.compare(T, T, Comparator<T>)), OR
-    - It appears multiple times in return type (e.g., Collectors.toSet() -> Collector<T, ?, Set<T>>)
-    """
-    valid_j_type_params = []
-    for j_type_param in j_type_params:
-        typevar_name = str(j_type_param.getName())
-        # Count occurrences in return type
-        return_count = count_typevar_occurrences(j_return_type, typevar_name)
-        # Count occurrences in arguments
-        args_count = sum(
-            count_typevar_occurrences(j_arg.getParameterizedType(), typevar_name)
-            for j_arg in j_args
-        )
-        # Keep if: (in return AND in args) OR (appears multiple times in args) OR (appears multiple times in return)
-        if (return_count > 0 and args_count > 0) or args_count > 1 or return_count > 1:
-            valid_j_type_params.append(j_type_param)
-
-    return valid_j_type_params
-
-
-def param_type_name(p: Any) -> str:
-    t = p.getType()
-    return str(t.getCanonicalName() or t.getName())
-
-
-def generate_method_signature(j_overload: Any) -> str:
-    class_name = j_overload.getDeclaringClass().getName()
-    method_name = j_overload.getName()
-    j_args = j_overload.getParameters()
-
-    return (
-        f"{class_name}.{method_name}({', '.join([param_type_name(p) for p in j_args])})"
-    )
-
-
-def method_overload_sort_key(j_overload: Any) -> tuple[int, str]:
-    """
-    Create a sort key for method overloads that ensures consistent ordering.
-    Sorts by: 1) number of parameters (ascending), 2) parameter types (alphabetically)
-    This ensures that overloads are always in the same order across inheritance hierarchies.
-    """
-    j_args = j_overload.getParameters()
-    num_params = len(j_args)
-    
-    # Get parameter type names for secondary sorting
-    param_types = [param_type_name(p) for p in j_args]
-    param_signature = ", ".join(param_types)
-    
-    return (num_params, param_signature)
-
-
-def generate_java_method_stub(
-    package_name: str,
-    name: str,
-    j_overloads: list[Any],
-    javadoc: dict[str, str],
-    classes_done: set[str],
-    classes_used: set[str],
-    class_type_vars: list[TypeVarStr],
-    output: list[str],
-    imports_output: list[str],
-) -> None:
-    """Generate stubs for a single Java method (including the constructor which becomes __init__)."""
-    is_constructor = name == "__init__"
-    is_overloaded = len(j_overloads) > 1
-    signatures: list[JavaFunctionSig] = []
-    for i, j_overload in enumerate(sorted(list(j_overloads), key=method_overload_sort_key)):
-        j_return_type = None if is_constructor else j_overload.getGenericReturnType()
-        j_args = j_overload.getParameters()
-        static = False if is_constructor else is_static(j_overload)
-        all_j_type_params = list(j_overload.getTypeParameters())
-
-        if static:
-            j_type_params_to_use = filter_type_params_appearing_in_args_and_return(
-                all_j_type_params, j_return_type, j_args
-            )
-        else:
-            j_type_params_to_use = all_j_type_params
-
-        # Create TypeVars for filtered type parameters
-        method_type_vars = [
-            python_type_var(
-                j_type, uniq_scope_id=f"{name}_{i}" if is_overloaded else name
-            )
-            for j_type in j_type_params_to_use
-        ]
-        usable_type_vars = (
-            method_type_vars + class_type_vars if not static else method_type_vars
-        )
-        args: list[ArgSig] = [] if static else [ArgSig(name="self")]
-        for j_arg in j_args:
-            j_arg_type = j_arg.getParameterizedType()
-            if j_arg.isVarArgs():
-                j_arg_type = java_array_component_type(j_arg_type)
-            j_arg_name = (
-                str(j_arg.getName())
-                if j_arg.isNamePresent()
-                else infer_arg_name(j_arg_type, args)
-            )
-            args.append(
-                ArgSig(
-                    name=j_arg_name,
-                    arg_type=python_type(
-                        j_arg_type, usable_type_vars, is_argument=True
-                    ),
-                    var_args=j_arg.isVarArgs(),
-                )
-            )
-
-        ret_type = python_type(j_return_type, usable_type_vars)
-
-        method_signature = generate_method_signature(j_overload)
-        if method_signature in METHOD_CAN_RETURN_NONE:
-            if (
-                j_return_type is not None
-                and hasattr(j_return_type, "getName")
-                and (java_primitive := j_return_type.getName()) in JAVA_PRIMITIVE_TYPES
-            ):
-                log.warning(
-                    f"Method '{method_signature}' is whitelisted as potentially returning None, but returns the primitive '{java_primitive}' which cannot be None. Probably this whitelist entry is wrong..."
-                )
-
-            ret_type = TypeStr("typing.Union", [ret_type, TypeStr("None")])
-
-        signatures.append(
-            JavaFunctionSig(
-                name,
-                args=args,
-                ret_type=ret_type,
-                static=static,
-                type_vars=method_type_vars,
-            )
-        )
-
-    # in case of overloaded methods, no type var declarations are allowed in
-    # between overloads - so put them first.
-    for signature in signatures:
-        for type_var in signature.type_vars:
-            output.append(
-                to_type_var_declaration(
-                    type_var, package_name, classes_done, classes_used, imports_output
-                )
-            )
-
-    if javadoc.get(name):
-        overloads_javadoc = split_method_overload_javadoc(signatures, javadoc[name])
-    else:
-        overloads_javadoc = ["" for _ in signatures]
-
-    for signature, overload_javadoc in zip(signatures, overloads_javadoc):
-        if is_overloaded:
-            imports_output.append("import typing")
-            output.append("@typing.overload")
-        if signature.static:
-            output.append("@staticmethod")
-        sig: list[str] = []
-        for i, arg in enumerate(signature.args):
-            arg_def: str | None
-            if arg.name == "self":
-                arg_def = arg.name
-            else:
-                arg_def = pysafe(arg.name)
-                if arg_def is None:
-                    arg_def = f"invalidArgName{i}"
-                if arg.var_args:
-                    arg_def = "*" + arg_def
-
-                if arg.arg_type:
-                    arg_def += ": " + to_annotated_type(
-                        arg.arg_type,
-                        package_name,
-                        classes_done,
-                        classes_used,
-                        imports_output,
-                    )
-
-            sig.append(arg_def)
-
-        if is_constructor:
-            output.append(
-                "def __init__({args}) -> None:{ellipsis}".format(
-                    args=", ".join(sig), ellipsis="" if overload_javadoc else " ..."
-                )
-            )
-            if overload_javadoc:
-                output.extend(to_docstring_lines(overload_javadoc))
-                output.append("    ...")
-        else:
-            function_name = pysafe(signature.name)
-            if function_name is None:
-                continue
-            # In the future, we should prevent keyword arguments from being
-            # used (PEP-570) but that requires 3.8+
-            output.append(
-                "def {function}({args}) -> {ret}:{ellipsis}".format(
-                    function=function_name,
-                    args=", ".join(sig),
-                    ret=to_annotated_type(
-                        signature.ret_type,
-                        package_name,
-                        classes_done,
-                        classes_used,
-                        imports_output,
-                    ),
-                    ellipsis="" if overload_javadoc else " ...",
-                )
-            )
-            if overload_javadoc:
-                output.extend(to_docstring_lines(overload_javadoc))
-                output.append("    ...")
-
-
-def generate_java_field_stub(
-    package_name: str,
-    j_field: Any,
-    javadoc: dict[str, str],
-    classes_done: set[str],
-    classes_used: set[str],
-    class_type_vars: list[TypeVarStr],
-    output: list[str],
-    imports_output: list[str],
-) -> None:
-    """Generate stubs for a single Java class field or constant."""
-    if not is_public(j_field):
-        return
-    static = is_static(j_field)
-    field_name = str(j_field.getName())
-    field_type = python_type(j_field.getType(), class_type_vars if not static else None)
-    field_type_annotation = to_annotated_type(
-        field_type,
-        package_name,
-        classes_done,
-        classes_used,
-        imports_output,
-        can_be_deferred=True,
-    )
-    if static:
-        imports_output.append("import typing")
-        field_type_annotation = f"typing.ClassVar[{field_type_annotation}]"
-    py_safe_field_name = pysafe(field_name)
-    if py_safe_field_name is None:
-        return
-    output.append(f"{py_safe_field_name}: {field_type_annotation} = ...")
-    if field_name in javadoc:
-        output.extend(to_docstring_lines(javadoc[field_name], indent=False))
 
 
 def pysafe_package_path(package_path: str) -> str:
@@ -1251,299 +162,1151 @@ def to_type_var_declaration(
         )
 
 
-def chaquopy_customizer_super_types(
-    j_class: jpype.JClass,
-    class_type_vars: list[TypeVarStr],
-    customizers_used: set[type],
-    imports_output: list[str],
-) -> list[str]:
-    """Get extra 'artificial' super types to add, to take into account the effect of JPype customizers."""
-    extra_super_types = []
-    # for customizer in j_class._hints.implementations:
-    #     type_str = customizer.__qualname__
-    #     if class_type_vars:
-    #         type_str += (
-    #             "[" + ", ".join([tv.python_name for tv in class_type_vars]) + "]"
-    #         )
-    #     extra_super_types.append(type_str)
-    #     customizers_used.add(customizer)
-    if j_class.class_.getName() == "java.lang.Throwable":
-        # Workaround to allow Throwable-derived exception types be recognized
-        # as JException, so that they can be assigned as Exception.__cause__
-        extra_super_types.append("builtins.Exception")
-        imports_output.append("import builtins")
-    return extra_super_types
-    return []
+# ---------------------------------------------------------------------------
+# ASM access-flag constants (from org.objectweb.asm.Opcodes)
+# ---------------------------------------------------------------------------
+ACC_PUBLIC = 0x0001
+ACC_PROTECTED = 0x0004
+ACC_STATIC = 0x0008
+ACC_FINAL = 0x0010
+ACC_INTERFACE = 0x0200
+ACC_ABSTRACT = 0x0400
+ACC_SYNTHETIC = 0x1000
+ACC_ANNOTATION = 0x2000
+ACC_ENUM = 0x4000
+ACC_BRIDGE = 0x0040
+ACC_VARARGS = 0x0080
 
 
-def sanitize_javadoc_html(escaped_html: str | None) -> str:
-    """Un-Escape common html escapes used, and change the non-breaking space (unicode 200B) to ' '"""
-    if escaped_html is None:
-        return ""
-    else:
-        return (
-            str(escaped_html)
-            .replace("\u200b", " ")
-            .replace("\xa0", " ")
-            .replace("&nbsp;", " ")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-        )
+# ---------------------------------------------------------------------------
+# JVM generic-signature parser
+# ---------------------------------------------------------------------------
 
 
-def extract_class_javadoc(j_class: jpype.JClass) -> Javadoc:
-    try:
-        from org.jpype.javadoc import JavadocExtractor  # type: ignore
+@dataclasses.dataclass
+class _ParseResult:
+    """Result of parsing a single type from a JVM generic signature."""
 
-        j_doc = JavadocExtractor().getDocumentation(j_class)
-        if j_doc is None:
-            return Javadoc(description="")
-        else:
-            return Javadoc(
-                description=sanitize_javadoc_html(j_doc.description).strip(),
-                ctors=sanitize_javadoc_html(j_doc.ctors),
-                methods={
-                    name: sanitize_javadoc_html(doc)
-                    for name, doc in j_doc.methods.items()
-                },
-                fields={
-                    name: sanitize_javadoc_html(doc)
-                    for name, doc in j_doc.fields.items()
-                },
+    type_str: TypeStr
+    end: int  # index directly after the consumed characters
+
+
+def _internal_to_dotted(name: str) -> str:
+    """Convert JVM internal name (slashes) to dotted Java name."""
+    return name.replace("/", ".").replace("$", ".")
+
+
+def _internal_to_dotted_raw(name: str) -> str:
+    """Convert JVM internal name to dotted Java name, keeping '$' for later processing."""
+    return name.replace("/", ".")
+
+
+@dataclasses.dataclass
+class Primitive:
+    java_primitive: str
+    java_object: str
+    python_primitive: str
+    python_type: str
+
+
+PRIMITIVES: list[Primitive] = [
+    Primitive("void", "java.lang.Void", "java.jvoid", "None"),
+    Primitive("byte", "java.lang.Byte", "java.jbyte", "int"),
+    Primitive("short", "java.lang.Short", "java.jshort", "int"),
+    Primitive("int", "java.lang.Integer", "java.jint", "int"),
+    Primitive("long", "java.lang.Long", "java.jlong", "int"),
+    Primitive("boolean", "java.lang.Boolean", "java.jboolean", "bool"),
+    Primitive("double", "java.lang.Double", "java.jdouble", "float"),
+    Primitive("float", "java.lang.Float", "java.jfloat", "float"),
+    Primitive("char", "java.lang.Character", "java.jchar", "str"),
+]
+
+TYPE_NAME_TO_PRIMITIVE_MAP: dict[str, Primitive] = {
+    **{p.java_primitive: p for p in PRIMITIVES},
+    **{p.java_object: p for p in PRIMITIVES},
+}
+
+
+def translate_type_name(
+    type_name: str,
+    type_args: list[TypeStr] | None = None,
+    is_argument: bool = False,
+    is_array_param: bool = False,
+    is_type_arg: bool = False,
+) -> TypeStr:
+    """
+    Translate basic Java types to python types. Note that this conversion is applied for ALL types, no matter if they
+    appear as method argument types, field types, return types, super types, etc.
+
+    Converted types in all cases:
+     - Java primitives (e.g. int) and Java boxed primitives (e.g. Integer)
+     - Java void -> None
+     - java.lang.String -> str, but ONLY IF JPype convertStrings flag is enabled
+     - java.lang.Object -> Any
+     - java.lang.Class -> Type
+
+    Additionally, implicitConversions=True indicates that the type is used as METHOD ARGUMENT. In this case we also
+    apply the mangling by handleImplicitConversions() to account for JPype implicit type conversions.
+    """
+    union: list[TypeStr] = []
+
+    if type_name in TYPE_NAME_TO_PRIMITIVE_MAP:
+        primitive = TYPE_NAME_TO_PRIMITIVE_MAP[type_name]
+        if is_array_param and is_argument:
+            raise ValueError(
+                f"Type {type_name} cannot be both an array parameter and an argument type."
             )
-    except (jpype.JException, ImportError):
-        return Javadoc(description="")
+
+        if is_array_param:
+            union.append(TypeStr(primitive.python_primitive))
+        elif is_type_arg:
+            union.append(TypeStr(primitive.java_object))
+        else:
+            union.append(TypeStr(primitive.python_type))
+
+        if is_argument:
+            # implicit conversions
+            union.append(TypeStr(primitive.python_primitive))
+            union.append(TypeStr(primitive.java_object))
+
+    if type_name == "java.lang.String":
+        if is_array_param or is_type_arg:
+            union.append(TypeStr("java.lang.String"))
+        else:
+            union.append(TypeStr("str"))
+            if is_argument:
+                union.append(TypeStr("java.lang.String"))
+    if type_name == "java.lang.Class":
+        union.append(TypeStr("typing.Type", type_args))
+    if type_name == "java.lang.Object":
+        union.append(TypeStr("java.lang.Object"))
+        if is_argument:
+            union.append(TypeStr("int"))
+            union.append(TypeStr("bool"))
+            union.append(TypeStr("float"))
+            union.append(TypeStr("str"))
+
+    if len(union) == 1:
+        return TypeStr(union[0].name, union[0].type_args)
+    if len(union) > 1:
+        return TypeStr("typing.Union", union)
+    return TypeStr(type_name, type_args)
 
 
-def to_docstring_lines(doc: str, indent: bool = True) -> list[str]:
-    if not doc:
-        return []
-    indent_str = "    " if indent else ""
-    javadoc_output = [indent_str + javadoc_line for javadoc_line in doc.split("\n")]
-    return [f'{indent_str}"""'] + javadoc_output + [f'{indent_str}"""']
+PARAMETER_TO_ARRAY_TYPE_MAP: dict[str, str] = {
+    "java.jboolean": "java.chaquopy.JavaArrayJBoolean",
+    "java.jbyte": "java.chaquopy.JavaArrayJByte",
+    "java.jshort": "java.chaquopy.JavaArrayJShort",
+    "java.jint": "java.chaquopy.JavaArrayJInt",
+    "java.jlong": "java.chaquopy.JavaArrayJLong",
+    "java.jfloat": "java.chaquopy.JavaArrayJFloat",
+    "java.jdouble": "java.chaquopy.JavaArrayJDouble",
+    "java.jchar": "java.chaquopy.JavaArrayJChar",
+}
 
 
-def generate_java_class_stub(
-    package: jpype.JPackage,
-    j_class: jpype.JClass,
-    include_javadoc: bool,
+def _parse_type_signature(
+    sig: str,
+    pos: int,
+    type_vars: list[TypeVarStr],
+    is_argument: bool = False,
+    is_array_param: bool = False,
+    is_type_arg: bool = False,
+) -> _ParseResult:
+    """
+    Parse a single Java type starting at *pos* in the generic signature string *sig*.
+    Returns a _ParseResult with the parsed TypeStr and the new position.
+
+    Handles:
+      - base types: B C D F I J S V Z
+      - object types: L<name>;  and L<name><type-args>;
+      - arrays: [<type>
+      - type variables: T<name>;
+      - wildcards: * + - (inside type argument lists)
+    """
+    c = sig[pos]
+
+    # ---- primitive / void ---------------------------------------------------
+    PRIMITIVE_DESCS = {
+        "B": "byte",
+        "C": "char",
+        "D": "double",
+        "F": "float",
+        "I": "int",
+        "J": "long",
+        "S": "short",
+        "V": "void",
+        "Z": "boolean",
+    }
+    if c in PRIMITIVE_DESCS:
+        ts = translate_type_name(
+            PRIMITIVE_DESCS[c], is_argument=is_argument, is_array_param=is_array_param, is_type_arg=is_type_arg
+        )
+        return _ParseResult(ts, pos + 1)
+
+    # ---- array --------------------------------------------------------------
+    if c == "[":
+        elem = _parse_type_signature(
+            sig, pos + 1, type_vars, is_argument=False, is_array_param=True
+        )
+        # Mimic translate_java_array_type logic
+        if elem.type_str.name in PARAMETER_TO_ARRAY_TYPE_MAP:
+            arr_ts = TypeStr(PARAMETER_TO_ARRAY_TYPE_MAP[elem.type_str.name])
+        else:
+            arr_ts = TypeStr("java.chaquopy.JavaArray", [elem.type_str])
+        return _ParseResult(arr_ts, elem.end)
+
+    # ---- type variable  T<name>; -------------------------------------------
+    if c == "T":
+        end = sig.index(";", pos + 1)
+        var_name = sig[pos + 1 : end]
+        matching = [tv for tv in type_vars if tv.java_name == var_name]
+        if matching:
+            ts = TypeStr(matching[0].python_name)
+        else:
+            ts = TypeStr(var_name)
+        return _ParseResult(ts, end + 1)
+
+    # ---- wildcard (inside < >) ----------------------------------------------
+    if c == "*":
+        return _ParseResult(TypeStr("java.lang.Object"), pos + 1)
+    if c in ("+", "-"):
+        # bounded wildcard — use the bound type directly (same as reflection code)
+        inner = _parse_type_signature(sig, pos + 1, type_vars)
+        return _ParseResult(inner.type_str, inner.end)
+
+    # ---- object type  L<classname>[<typeargs>]; ----------------------------
+    if c == "L":
+        # find the end of the class name (either '<' or ';')
+        i = pos + 1
+        while i < len(sig) and sig[i] not in ("<", ";", "."):
+            i += 1
+        class_name = _internal_to_dotted_raw(sig[pos + 1 : i])
+        type_args: list[TypeStr] | None = None
+
+        if i < len(sig) and sig[i] == "<":
+            # parse type arguments
+            i += 1  # skip '<'
+            type_args = []
+            while sig[i] != ">":
+                arg_result = _parse_type_signature(sig, i, type_vars, is_type_arg=True)
+                type_args.append(arg_result.type_str)
+                i = arg_result.end
+            i += 1  # skip '>'
+
+        # skip any inner-class suffix  .InnerName<...>  (treat as outer for now)
+        while i < len(sig) and sig[i] == ".":
+            i += 1
+            while i < len(sig) and sig[i] not in ("<", ";", "."):
+                i += 1
+            if i < len(sig) and sig[i] == "<":
+                i += 1
+                depth = 1
+                while depth > 0:
+                    if sig[i] == "<":
+                        depth += 1
+                    elif sig[i] == ">":
+                        depth -= 1
+                    i += 1
+
+        assert sig[i] == ";", f"Expected ';' at {i} in {sig!r}"
+        i += 1  # skip ';'
+
+        ts = translate_type_name(
+            class_name,
+            type_args=type_args,
+            is_argument=is_argument,
+            is_array_param=is_array_param,
+            is_type_arg=is_type_arg,
+        )
+        return _ParseResult(ts, i)
+
+    raise ValueError(f"Unexpected character {c!r} at pos {pos} in signature {sig!r}")
+
+
+def _parse_descriptor_type(
+    desc: str, pos: int, is_argument: bool = False, is_array_param: bool = False
+) -> _ParseResult:
+    """Parse a single type from a plain (non-generic) method descriptor."""
+    return _parse_type_signature(
+        desc, pos, [], is_argument=is_argument, is_array_param=is_array_param
+    )
+
+
+def _parse_class_type_params(sig: str) -> tuple[list[tuple[str, TypeStr | None]], int]:
+    """
+    Parse the formal type parameter declarations at the start of a class or method
+    signature, e.g. ``<K:Ljava/lang/Enum<TK;>;V:Ljava/lang/Object;>``.
+
+    Returns a list of (java_name, bound) and the position after '>'.
+    At this point type_vars are not yet known so we parse bounds without resolving
+    type var names (they will be resolved once TypeVarStr objects are created).
+    """
+    if not sig or sig[0] != "<":
+        return [], 0
+
+    params: list[tuple[str, TypeStr | None]] = []
+    i = 1
+    while sig[i] != ">":
+        # read name up to ':'
+        colon = sig.index(":", i)
+        name = sig[i:colon]
+        i = colon + 1
+        # There may be a class bound (L...) or just interface bounds (starts with ':')
+        # A lone ':' means no class bound
+        bound: TypeStr | None = None
+        if i < len(sig) and sig[i] != ":" and sig[i] != ">":
+            result = _parse_type_signature(sig, i, [])
+            raw_bound = result.type_str
+            if raw_bound.name not in ("java.lang.Object", "None"):
+                bound = raw_bound
+            i = result.end
+        # skip interface bounds (additional ':' separated)
+        while i < len(sig) and sig[i] == ":":
+            i += 1
+            if i < len(sig) and sig[i] not in (":", ">"):
+                result = _parse_type_signature(sig, i, [])
+                i = result.end
+        params.append((name, bound))
+    return params, i + 1  # skip '>'
+
+
+def _make_type_vars(
+    params: list[tuple[str, TypeStr | None]], scope_id: str
+) -> list[TypeVarStr]:
+    return [
+        TypeVarStr(java_name=name, python_name=f"_{scope_id}__{name}", bound=bound)
+        for name, bound in params
+    ]
+
+
+def _parse_method_signature(
+    sig: str | None,
+    desc: str,
+    type_vars: list[TypeVarStr],
+    is_constructor: bool,
+    scope_id: str = "",
+) -> tuple[list[TypeVarStr], list[TypeStr], TypeStr]:
+    """
+    Parse a method signature/descriptor.
+
+    Returns (method_type_vars, param_types, return_type).
+    Uses *sig* (generic) if available, otherwise falls back to *desc* (raw descriptor).
+    *scope_id* is used to build TypeVar python names (e.g. ``_methodName__T``).
+    """
+    method_type_vars: list[TypeVarStr] = []
+    param_types: list[TypeStr] = []
+
+    source = sig if sig else desc
+    pos = 0
+
+    # optional method-level type parameters <T:...>
+    if source[0] == "<":
+        raw_params, pos = _parse_class_type_params(source)
+        method_type_vars = [
+            TypeVarStr(java_name=name, python_name=f"_{scope_id}__{name}", bound=bound)
+            for name, bound in raw_params
+        ]
+    all_type_vars = method_type_vars + type_vars
+
+    assert source[pos] == "(", f"Expected '(' at {pos} in {source!r}"
+    pos += 1
+
+    while source[pos] != ")":
+        result = _parse_type_signature(source, pos, all_type_vars, is_argument=True)
+        param_types.append(result.type_str)
+        pos = result.end
+
+    pos += 1  # skip ')'
+
+    if is_constructor:
+        ret_type = TypeStr("None")
+    else:
+        result = _parse_type_signature(source, pos, all_type_vars, is_argument=False)
+        ret_type = result.type_str
+
+    return method_type_vars, param_types, ret_type
+
+
+def _parse_field_type(
+    sig: str | None, desc: str, type_vars: list[TypeVarStr]
+) -> TypeStr:
+    """Parse a field's type from its generic signature or plain descriptor."""
+    source = sig if sig else desc
+    result = _parse_type_signature(source, 0, type_vars)
+    return result.type_str
+
+
+def _parse_super_types(
+    sig: str | None,
+    super_name: str | None,
+    interfaces: list[str],
+    type_vars: list[TypeVarStr],
+) -> list[TypeStr]:
+    """
+    Parse the superclass and interface types of a class.
+    Uses the generic signature when available.
+    """
+    if sig:
+        # skip class type params if present
+        pos = 0
+        if sig[0] == "<":
+            _, pos = _parse_class_type_params(sig)
+        supers: list[TypeStr] = []
+        while pos < len(sig):
+            result = _parse_type_signature(sig, pos, type_vars)
+            supers.append(result.type_str)
+            pos = result.end
+        return supers
+    else:
+        supers = []
+        if super_name:
+            supers.append(translate_type_name(_internal_to_dotted_raw(super_name)))
+        for iface in interfaces:
+            supers.append(translate_type_name(_internal_to_dotted_raw(iface)))
+        return supers
+
+
+# ---------------------------------------------------------------------------
+# Whitelist helper
+# ---------------------------------------------------------------------------
+
+
+def _method_whitelist_key(
+    class_name_dotted: str, method_name: str, param_descs: list[str]
+) -> str:
+    """Build the whitelist key in the format used by METHOD_CAN_RETURN_NONE."""
+    params = ", ".join(param_descs)
+    return f"{class_name_dotted}.{method_name}({params})"
+
+
+def _desc_to_whitelist_type(desc_char: str, class_name: str = "") -> str:
+    """Convert a single descriptor character (or 'L...;') to a whitelist type string."""
+    MAP = {
+        "B": "byte",
+        "C": "char",
+        "D": "double",
+        "F": "float",
+        "I": "int",
+        "J": "long",
+        "S": "short",
+        "V": "void",
+        "Z": "boolean",
+    }
+    if desc_char in MAP:
+        return MAP[desc_char]
+    if desc_char.startswith("["):
+        inner = _desc_to_whitelist_type(desc_char[1:], class_name)
+        return inner + "[]"
+    if desc_char.startswith("L"):
+        return desc_char[1:].rstrip(";").replace("/", ".").replace("$", ".")
+    return desc_char
+
+
+def _parse_descriptor_params_for_whitelist(desc: str) -> list[str]:
+    """Parse raw descriptor parameter types for whitelist lookup."""
+    assert desc[0] == "("
+    i = 1
+    params = []
+    while desc[i] != ")":
+        if desc[i] == "[":
+            j = i
+            while desc[j] == "[":
+                j += 1
+            if desc[j] == "L":
+                end = desc.index(";", j)
+                params.append(_desc_to_whitelist_type(desc[i : end + 1]))
+                i = end + 1
+            else:
+                params.append(_desc_to_whitelist_type(desc[i : j + 1]))
+                i = j + 1
+        elif desc[i] == "L":
+            end = desc.index(";", i)
+            params.append(_desc_to_whitelist_type(desc[i : end + 1]))
+            i = end + 1
+        else:
+            params.append(_desc_to_whitelist_type(desc[i]))
+            i += 1
+    return params
+
+
+# ---------------------------------------------------------------------------
+# Output dataclass (same as before)
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class JavaClassPythonStub:
+    imports: list[str]
+    type_vars: list[
+        str
+    ]  # TypeVar declarations (module-level, before the class definition)
+    code: list[str]
+
+
+# ---------------------------------------------------------------------------
+# Core: generate stubs for one class from its ClassNode
+# ---------------------------------------------------------------------------
+
+
+def _is_accessible(access: int) -> bool:
+    return bool(access & (ACC_PUBLIC | ACC_PROTECTED))
+
+
+def _get_param_names_from_local_vars(m) -> list[str] | None:
+    """
+    Extract parameter names from the MethodNode's localVariables table.
+    localVariables index 0 = 'this' (for instance methods), then params in order.
+    Returns None if no local variable debug info is available.
+    """
+    from org.objectweb.asm import Type as AsmType  # type: ignore
+
+    if not m.localVariables:
+        return None
+    is_static = bool(m.access & ACC_STATIC)
+    # Build index -> name map
+    lv_map: dict[int, str] = {}
+    for lv in m.localVariables:
+        lv_map[int(lv.index)] = str(lv.name)
+    # For instance methods, slot 0 = 'this', params start at slot 1
+    # For static methods, params start at slot 0
+    # But long/double take 2 slots — we need to count carefully using the descriptor
+    arg_types = list(AsmType.getArgumentTypes(str(m.desc)))
+    names: list[str] = []
+    slot = 0 if is_static else 1  # skip 'this'
+    for at in arg_types:
+        names.append(lv_map.get(slot, ""))
+        # long (J) and double (D) occupy 2 slots
+        slot += 2 if at.getSort() in (7, 8) else 1  # Sort.LONG=7, Sort.DOUBLE=8
+    return names if any(names) else None
+
+
+def _count_typevar_uses(type_str: TypeStr, tv_names: set[str], counts: dict[str, int]) -> None:
+    """Recursively count how many times each TypeVar name appears in a TypeStr tree."""
+    if type_str.name in tv_names:
+        counts[type_str.name] = counts.get(type_str.name, 0) + 1
+    for arg in type_str.type_args or []:
+        _count_typevar_uses(arg, tv_names, counts)
+
+
+def _substitute_typestr(type_str: TypeStr, subs: dict[str, TypeStr]) -> TypeStr:
+    """Replace TypeVar names with their substitution TypeStr, recursively."""
+    if type_str.name in subs:
+        return subs[type_str.name]
+    if type_str.type_args:
+        new_args = [_substitute_typestr(a, subs) for a in type_str.type_args]
+        return TypeStr(type_str.name, new_args)
+    return type_str
+
+
+def _eliminate_single_use_type_vars(
+    method_type_vars: list[TypeVarStr],
+    param_types: list[TypeStr],
+    ret_type: TypeStr,
+) -> tuple[list[TypeVarStr], list[TypeStr], TypeStr]:
+    """
+    Remove method-level TypeVars that appear only once across all parameter types
+    and the return type.  Such TypeVars add no constraint and only create noise in
+    the stub output.  Each eliminated TypeVar is replaced by its bound, or by
+    java.lang.Object if it has no bound.
+
+    Returns (kept_type_vars, new_param_types, new_ret_type).
+    """
+    tv_names = {tv.python_name for tv in method_type_vars}
+    counts: dict[str, int] = {}
+    for pt in param_types:
+        _count_typevar_uses(pt, tv_names, counts)
+    _count_typevar_uses(ret_type, tv_names, counts)
+
+    subs: dict[str, TypeStr] = {}
+    kept: list[TypeVarStr] = []
+    for tv in method_type_vars:
+        if counts.get(tv.python_name, 0) <= 1:
+            subs[tv.python_name] = tv.bound if tv.bound else TypeStr("java.lang.Object")
+        else:
+            kept.append(tv)
+
+    if subs:
+        param_types = [_substitute_typestr(p, subs) for p in param_types]
+        ret_type = _substitute_typestr(ret_type, subs)
+        method_type_vars = kept
+
+    return method_type_vars, param_types, ret_type
+
+
+def _generate_method_stub_asm(
+    package_name: str,
+    method_name_py: str,
+    methods: list,  # list of MethodNode
     classes_done: set[str],
     classes_used: set[str],
-    customizers_used: set[type],
+    class_type_vars: list[TypeVarStr],
+    class_name_dotted: str,
     output: list[str],
     imports_output: list[str],
-    type_var_output: list[str] | None = None,
-    parent_class_type_vars: list[TypeVarStr] | None = None,
+    scope_id_prefix: str,
 ) -> None:
-    """Generate stubs for a single Java class and all of it's nested classes."""
-    package_name = package.__name__
-    items = sorted(vars(j_class).items(), key=lambda x: x[0])
+    """Generate stubs for one method name (possibly overloaded) using ASM data."""
+    from org.objectweb.asm import Type as AsmType  # type: ignore
 
-    if include_javadoc:
-        javadoc = extract_class_javadoc(j_class)
-    else:
-        javadoc = Javadoc(description="")
+    is_constructor = method_name_py == "__init__"
+    is_overloaded = len(methods) > 1
 
-    write_type_vars_to_output = False
-    if type_var_output is None:
-        write_type_vars_to_output = True
-        type_var_output = []
+    # Sort by param count then param types for deterministic output
+    def sort_key(m):
+        arg_types = list(AsmType.getArgumentTypes(m.desc))
+        return (len(arg_types), str(m.desc))
 
-    class_prefix = (
-        str(j_class.class_.getName())
-        .replace(package_name + ".", "")
-        .replace(".", "_")
-        .replace("$", "__")
-    )
-    class_type_vars = [
-        python_type_var(t, uniq_scope_id=class_prefix)
-        for t in j_class.class_.getTypeParameters()
-    ]
-    if parent_class_type_vars is None or is_static(j_class.class_):
-        usable_type_vars = class_type_vars
-    else:
-        usable_type_vars = parent_class_type_vars + class_type_vars
+    signatures: list[JavaFunctionSig] = []
+    for i, m in enumerate(sorted(methods, key=sort_key)):
+        is_static = bool(m.access & ACC_STATIC)
+        is_varargs = bool(m.access & ACC_VARARGS)
 
-    constructors_output: list[str] = []
-    constructors = j_class.class_.getConstructors()
-    generate_java_method_stub(
-        package_name,
-        "__init__",
-        constructors,
-        {"__init__": javadoc.ctors},
-        classes_done=classes_done,
-        classes_used=classes_used,
-        class_type_vars=usable_type_vars,
-        output=constructors_output,
-        imports_output=imports_output,
-    )
+        overload_scope = f"{scope_id_prefix}_{i}" if is_overloaded else scope_id_prefix
 
-    methods_output: list[str] = []
-    j_overloads = j_class.class_.getMethods()
-    for attr, value in items:
-        if isinstance(value, jpype.JMethod):
-            matching_overloads = [
-                o
-                for o in j_overloads
-                if pysafe(str(o.getName())) == attr and not o.isSynthetic()
-            ]
-            generate_java_method_stub(
-                package_name,
-                attr,
-                matching_overloads,
-                javadoc.methods,
-                classes_done=classes_done,
-                classes_used=classes_used,
-                class_type_vars=usable_type_vars,
-                output=methods_output,
-                imports_output=imports_output,
+        # Parse with the correct scope_id so TypeVar python names are right from the start
+        usable_class_tvars = class_type_vars
+        method_type_vars, param_types, ret_type = _parse_method_signature(
+            str(m.signature) if m.signature else None,
+            str(m.desc),
+            usable_class_tvars if not is_static else [],
+            is_constructor,
+            scope_id=overload_scope,
+        )
+        # For non-static methods, combine method TVars with class TVars for resolving
+        # Note: _parse_method_signature already used the right combined list internally.
+        # We only need the final lists here for building ArgSig/ret annotations.
+
+        # Eliminate method-level TypeVars that appear only once across all params
+        # and the return type — they add no constraint and just create noise.
+        if method_type_vars:
+            method_type_vars, param_types, ret_type = _eliminate_single_use_type_vars(
+                method_type_vars, param_types, ret_type
             )
 
-    fields_output: list[str] = []
-    j_fields = j_class.class_.getDeclaredFields()
-    for j_field in j_fields:
-        generate_java_field_stub(
-            package_name,
-            j_field,
-            javadoc.fields,
-            classes_done=classes_done,
-            classes_used=classes_used,
-            class_type_vars=usable_type_vars,
-            output=fields_output,
-            imports_output=imports_output,
-        )
+        # Try to get real parameter names from debug info
+        param_names = _get_param_names_from_local_vars(m)
 
-    nested_classes_output: list[str] = []
-    classes_done_nested: set[str] = set()
-    for attr, value in items:
-        if is_java_class(value):
-            nested_done = set(classes_done)
-            generate_java_class_stub(
-                package,
-                value,
-                include_javadoc,
-                nested_done,
-                classes_used,
-                customizers_used,
-                output=nested_classes_output,
-                type_var_output=type_var_output,
-                imports_output=imports_output,
-                parent_class_type_vars=usable_type_vars,
-            )
-            classes_done_nested |= nested_done
-
-    while True:
-        nested_classes_used = {
-            t.split(".")[-1]
-            for t in classes_used
-            if t.startswith(str(j_class.class_.getName()) + "$")
-        }
-        remaining_private_nested_classes = nested_classes_used - (
-            classes_done | classes_done_nested
-        )
-        if not remaining_private_nested_classes:
-            break
-        for nested_class in sorted(remaining_private_nested_classes):
-            cls = None
-            try:
-                cls = getattr(j_class, nested_class.split("$")[1])
-            except (ImportError, AttributeError):
-                pass
-            if cls is not None:
-                nested_done = set(classes_done)
-                generate_java_class_stub(
-                    package,
-                    cls,
-                    include_javadoc,
-                    nested_done,
-                    classes_used,
-                    customizers_used,
-                    output=nested_classes_output,
-                    type_var_output=type_var_output,
-                    imports_output=imports_output,
-                    parent_class_type_vars=usable_type_vars,
-                )
-                classes_done_nested |= nested_done
+        # Build arg list
+        args: list[ArgSig] = [] if is_static else [ArgSig(name="self")]
+        for idx, pt in enumerate(param_types):
+            is_last = idx == len(param_types) - 1
+            is_va = is_varargs and is_last
+            if is_va:
+                # varargs: unwrap the array type
+                if pt.name == "java.chaquopy.JavaArray" and pt.type_args:
+                    pt = pt.type_args[0]
+                elif pt.name in PARAMETER_TO_ARRAY_TYPE_MAP.values():
+                    pass  # leave as-is — rare
+            # Use real param name from debug info, otherwise arg1/arg2/...
+            if param_names and idx < len(param_names) and param_names[idx]:
+                arg_name = param_names[idx]
             else:
-                log.warning(
-                    f"reference to missing inner class {nested_class} - generating empty stub"
-                )
-                generate_empty_class_stub(
-                    nested_class,
-                    classes_done=classes_done_nested,
-                    output=nested_classes_output,
-                )
+                arg_name = f"arg{idx + 1}"
+            args.append(ArgSig(name=arg_name, arg_type=pt, var_args=is_va))
 
-    super_types = []
-    for super_type in java_super_types(j_class):
-        super_types.append(
-            to_annotated_type(
-                python_type(super_type, usable_type_vars),
+        # Whitelist check
+        wl_params = _parse_descriptor_params_for_whitelist(str(m.desc))
+        wl_key = _method_whitelist_key(class_name_dotted, str(m.name), wl_params)
+        if wl_key in METHOD_CAN_RETURN_NONE:
+            ret_type = TypeStr("typing.Union", [ret_type, TypeStr("None")])
+
+        signatures.append(
+            JavaFunctionSig(
+                name=method_name_py,
+                args=args,
+                ret_type=ret_type,
+                static=is_static,
+                type_vars=method_type_vars,
+            )
+        )
+
+    # Emit type var declarations first (before @overload decorators)
+    for sig in signatures:
+        for tv in sig.type_vars:
+            output.append(
+                to_type_var_declaration(
+                    tv, package_name, classes_done, classes_used, imports_output
+                )
+            )
+
+    for sig in signatures:
+        if is_overloaded:
+            imports_output.append("import typing")
+            output.append("@typing.overload")
+        if sig.static:
+            output.append("@staticmethod")
+
+        sig_parts: list[str] = []
+        for idx, arg in enumerate(sig.args):
+            if arg.name == "self":
+                sig_parts.append("self")
+            else:
+                safe_name = pysafe(arg.name)
+                if safe_name is None:
+                    safe_name = f"invalidArgName{idx}"
+                if arg.var_args:
+                    safe_name = "*" + safe_name
+                if arg.arg_type:
+                    safe_name += ": " + to_annotated_type(
+                        arg.arg_type,
+                        package_name,
+                        classes_done,
+                        classes_used,
+                        imports_output,
+                    )
+                sig_parts.append(safe_name)
+
+        if is_constructor:
+            output.append(f"def __init__({', '.join(sig_parts)}) -> None: ...")
+        else:
+            fn_name = pysafe(sig.name)
+            if fn_name is None:
+                continue
+            ret_str = to_annotated_type(
+                sig.ret_type, package_name, classes_done, classes_used, imports_output
+            )
+            output.append(f"def {fn_name}({', '.join(sig_parts)}) -> {ret_str}: ...")
+
+
+def convert_java_class_to_python_stub(
+    class_file: str,
+    class_data: bytes,
+    all_class_data: dict[str, bytes] | None = None,
+    classes_done: set[str] | None = None,
+    classes_used: set[str] | None = None,
+    parent_type_vars: list[TypeVarStr] | None = None,
+) -> JavaClassPythonStub:
+    """
+    Convert a Java .class file to a Python stub using ASM (no Java Reflection).
+    """
+    from org.objectweb.asm import ClassReader  # type: ignore
+    from org.objectweb.asm.tree import ClassNode  # type: ignore
+
+    if classes_done is None:
+        classes_done = set()
+    if classes_used is None:
+        classes_used = set()
+
+    cr = ClassReader(jpype.JArray(jpype.JByte)(class_data))  # type: ignore
+    cn = ClassNode()
+    cr.accept(cn, 0)
+
+    # Skip synthetic classes and anonymous/local classes (those with outerMethod set).
+    # Inner classes with '$' are only called recursively from their outer class;
+    # convert_jar_to_python_stubs only passes top-level (no '$') files at the top level.
+    acc = int(cn.access)
+    if acc & ACC_SYNTHETIC:
+        return JavaClassPythonStub(imports=[], type_vars=[], code=[])
+
+    if cn.outerMethod:
+        return JavaClassPythonStub(imports=[], type_vars=[], code=[])
+
+    raw_class_name = str(cn.name)  # e.g. "java/util/ArrayList"
+    package_internal = raw_class_name.rsplit("/", 1)[0] if "/" in raw_class_name else ""
+    package_name = package_internal.replace("/", ".")
+    simple_name = raw_class_name.rsplit("/", 1)[-1]  # e.g. "ArrayList" or "Map$Entry"
+    class_name_dotted = raw_class_name.replace("/", ".").replace("$", ".")
+    display_name = simple_name.split("$")[-1]  # Python class name (no outer prefix)
+
+    # Unique scope id for TypeVars
+    class_prefix = simple_name.replace("$", "__")
+
+    # Parse class-level type parameters
+    class_sig = str(cn.signature) if cn.signature else None
+    raw_class_tvars: list[tuple[str, TypeStr | None]] = []
+    if class_sig and class_sig[0] == "<":
+        raw_class_tvars, _ = _parse_class_type_params(class_sig)
+    class_type_vars = _make_type_vars(raw_class_tvars, class_prefix)
+
+    # For non-static inner classes, the outer class's TypeVars are also in scope.
+    # Determine whether this class is a static nested class via its InnerClasses entry.
+    is_static_inner = True
+    if parent_type_vars is not None:
+        for _ic in cn.innerClasses:
+            if (
+                str(_ic.name) == raw_class_name
+                and (str(_ic.outerName) if _ic.outerName else None) != raw_class_name
+            ):
+                is_static_inner = bool(int(_ic.access) & ACC_STATIC)
+                break
+    if parent_type_vars and not is_static_inner:
+        usable_type_vars = parent_type_vars + class_type_vars
+    else:
+        usable_type_vars = class_type_vars
+
+    import_output: list[str] = []
+
+    # ---- Fields ----
+    fields_output: list[str] = []
+    for f in cn.fields:
+        if not (f.access & ACC_PUBLIC) and not (f.access & ACC_PROTECTED):
+            continue
+        if f.access & ACC_SYNTHETIC:
+            continue
+        field_name = str(f.name)
+        safe_field_name = pysafe(field_name)
+        if safe_field_name is None:
+            continue
+        field_is_static = bool(f.access & ACC_STATIC)
+        try:
+            ft = _parse_field_type(
+                str(f.signature) if f.signature else None,
+                str(f.desc),
+                usable_type_vars if not field_is_static else [],
+            )
+        except Exception as e:
+            log.warning(f"Skipping field {class_name_dotted}.{field_name}: {e}")
+            continue
+        ann = to_annotated_type(
+            ft, package_name, classes_done, classes_used, import_output
+        )
+        if field_is_static:
+            import_output.append("import typing")
+            ann = f"typing.ClassVar[{ann}]"
+        fields_output.append(f"{safe_field_name}: {ann} = ...")
+
+    # ---- Constructors ----
+    constructors_output: list[str] = []
+    ctors = [
+        m
+        for m in cn.methods
+        if str(m.name) == "<init>"
+        and (m.access & (ACC_PUBLIC | ACC_PROTECTED))
+        and not (m.access & (ACC_SYNTHETIC | ACC_BRIDGE))
+    ]
+    if ctors:
+        try:
+            _generate_method_stub_asm(
+                package_name,
+                "__init__",
+                ctors,
+                classes_done,
+                classes_used,
+                usable_type_vars,
+                class_name_dotted,
+                constructors_output,
+                import_output,
+                scope_id_prefix="__init__",
+            )
+        except Exception as e:
+            log.warning(f"Skipping constructors of {class_name_dotted}: {e}")
+
+    # ---- Methods ----
+    methods_output: list[str] = []
+    # Group by name
+    method_groups: dict[str, list] = {}
+    for m in cn.methods:
+        mname = str(m.name)
+        if mname == "<init>" or mname == "<clinit>":
+            continue
+        if not (m.access & (ACC_PUBLIC | ACC_PROTECTED)):
+            continue
+        if m.access & (ACC_SYNTHETIC | ACC_BRIDGE):
+            continue
+        py_name = pysafe(mname)
+        if py_name is None:
+            continue
+        method_groups.setdefault(py_name, []).append(m)
+
+    for py_name, overloads in sorted(method_groups.items()):
+        try:
+            _generate_method_stub_asm(
+                package_name,
+                py_name,
+                overloads,
+                classes_done,
+                classes_used,
+                usable_type_vars,
+                class_name_dotted,
+                methods_output,
+                import_output,
+                scope_id_prefix=py_name,
+            )
+        except Exception as e:
+            log.warning(f"Skipping method {class_name_dotted}.{py_name}: {e}")
+
+    # ---- Super types ----
+    super_name = str(cn.superName) if cn.superName else None
+    interfaces = [str(i) for i in cn.interfaces]
+
+    # For interfaces the JVM always writes java/lang/Object as the synthetic
+    # super_name in the bytecode, but interfaces DO expose Object's methods at
+    # runtime — every interface instance IS an Object.  Keep it so that interface
+    # stubs satisfy bound=java.lang.Object (e.g. for JavaArray[T]).
+
+    try:
+        super_type_strs = _parse_super_types(
+            class_sig, super_name, interfaces, usable_type_vars
+        )
+    except Exception as e:
+        log.warning(f"Could not parse supers for {class_name_dotted}: {e}")
+        super_type_strs = []
+
+    super_type_annotations: list[str] = []
+    for st in super_type_strs:
+        # Drop java.lang.Object when it would not be the sole supertype — all
+        # other supertypes (classes and interfaces alike) already transitively
+        # inherit from Object.  Keeping it first would violate Python's C3 MRO
+        # whenever any listed interface also inherits from Object.
+        if st.name == "java.lang.Object" and len(super_type_strs) > 1:
+            continue
+        try:
+            ann = to_annotated_type(
+                st,
                 package_name,
                 classes_done,
                 classes_used,
-                imports_output,
+                import_output,
                 can_be_deferred=False,
             )
-        )
+            super_type_annotations.append(ann)
+        except Exception as e:
+            log.warning(f"Skipping super type {st} for {class_name_dotted}: {e}")
+
+    # Add typing.Generic[...] if the class has type parameters
     if class_type_vars:
-        generic_type_arguments = ", ".join([tv.python_name for tv in class_type_vars])
-        super_types.append(f"typing.Generic[{generic_type_arguments}]")
-    super_types = super_types + chaquopy_customizer_super_types(
-        j_class, class_type_vars, customizers_used, imports_output
+        import_output.append("import typing")
+        generic_args = ", ".join(tv.python_name for tv in class_type_vars)
+        super_type_annotations.append(f"typing.Generic[{generic_args}]")
+
+    # Special case: Throwable → add builtins.Exception (mirrors chaquopy_customizer_super_types)
+    if class_name_dotted == "java.lang.Throwable":
+        super_type_annotations.append("builtins.Exception")
+        import_output.append("import builtins")
+
+    super_str = (
+        f"({', '.join(super_type_annotations)})" if super_type_annotations else ""
     )
-    for type_var in class_type_vars:
-        type_var_output.append(
+
+    # ---- Nested (inner) classes ----
+    # Find direct inner classes of this class via the InnerClasses attribute and
+    # generate their stubs recursively, embedding them inside this class body.
+    nested_classes_output: list[str] = []
+    nested_type_var_lines: list[str] = []
+    nested_done: set[str] = set()
+    if all_class_data is not None:
+        for ic in cn.innerClasses:
+            ic_name = str(ic.name)
+            ic_outer_name = str(ic.outerName) if ic.outerName else None
+            ic_inner_name = str(ic.innerName) if ic.innerName else None
+            ic_access = int(ic.access)
+            # Only direct inner classes of THIS class
+            if ic_outer_name != raw_class_name:
+                continue
+            # Skip anonymous inner classes (no innerName)
+            if not ic_inner_name:
+                continue
+            # Skip synthetic inner classes
+            if ic_access & ACC_SYNTHETIC:
+                continue
+            # Skip non-public/protected inner classes
+            if not (ic_access & (ACC_PUBLIC | ACC_PROTECTED)):
+                continue
+            ic_data = all_class_data.get(ic_name)
+            if ic_data is None:
+                continue
+            ic_is_static = bool(ic_access & ACC_STATIC)
+            ic_parent_tvars = usable_type_vars if not ic_is_static else None
+            try:
+                ic_done = set(classes_done)
+                nested_stub = convert_java_class_to_python_stub(
+                    ic_name + ".class",
+                    ic_data,
+                    all_class_data=all_class_data,
+                    classes_done=ic_done,
+                    classes_used=classes_used,
+                    parent_type_vars=ic_parent_tvars,
+                )
+                nested_done |= ic_done
+            except Exception as e:
+                log.warning(f"Skipping nested class {ic_name}: {e}")
+                continue
+            import_output.extend(nested_stub.imports)
+            nested_type_var_lines.extend(nested_stub.type_vars)
+            # Indent the nested class code by one level; blank lines stay blank
+            for line in nested_stub.code:
+                nested_classes_output.append(("    " + line) if line.strip() else "")
+    classes_done |= nested_done
+
+    # ---- TypeVar declarations (own class only; nested TypeVars are in nested_type_var_lines) ----
+    own_type_var_lines: list[str] = []
+    for tv in class_type_vars:
+        own_type_var_lines.append(
             to_type_var_declaration(
-                type_var, package_name, classes_done, classes_used, imports_output
+                tv, package_name, classes_done, classes_used, import_output
             )
         )
+    # All TypeVar declarations go to module level (before the outermost class definition)
+    all_type_var_lines = own_type_var_lines + nested_type_var_lines
 
-    super_type_str = f"({', '.join(super_types)})" if super_types else ""
-
-    class_name = str(
-        j_class.class_.getSimpleName()
-    )  # do not use python_typename to avoid mangling classes
-
-    if write_type_vars_to_output:
-        output.append("")
-        output += type_var_output
-
-    javadoc_output = to_docstring_lines(javadoc.description)
-
-    if (
-        not constructors_output
-        and not methods_output
-        and not fields_output
-        and not nested_classes_output
-    ):
-        if javadoc_output:
-            output.append(f"class {class_name}{super_type_str}:")
-            output.extend(javadoc_output)
-            output.append("    ...")
-        else:
-            output.append(f"class {class_name}{super_type_str}: ...")
-    else:
-        output.append(f"class {class_name}{super_type_str}:")
-        output.extend(javadoc_output)
+    # ---- Assemble class ----
+    has_body = (
+        fields_output or constructors_output or methods_output or nested_classes_output
+    )
+    class_code: list[str] = []
+    if has_body:
+        class_code.append(f"class {display_name}{super_str}:")
         for line in fields_output:
-            output.append(f"    {line}")
+            class_code.append(f"    {line}")
         for line in constructors_output:
-            output.append(f"    {line}")
+            class_code.append(f"    {line}")
         for line in methods_output:
-            output.append(f"    {line}")
+            class_code.append(f"    {line}")
         for line in nested_classes_output:
-            output.append(f"    {line}")
-    classes_done |= classes_done_nested
-    classes_done.add(simple_class_name_of(j_class))
+            class_code.append(line)  # already indented
+    else:
+        class_code.append(f"class {display_name}{super_str}: ...")
+
+    classes_done.add(display_name)
+
+    # Separate TypeVars from class code so the caller can place them at module level.
+    # The leading blank separator goes with type_vars if present, otherwise with code.
+    if all_type_var_lines:
+        return JavaClassPythonStub(
+            imports=import_output,
+            type_vars=[""] + all_type_var_lines,
+            code=class_code,
+        )
+    else:
+        return JavaClassPythonStub(
+            imports=import_output,
+            type_vars=[],
+            code=[""] + class_code,
+        )
 
 
-def generate_empty_class_stub(
-    class_name: str, classes_done: set[str], output: list[str]
-):
-    """Generate an empty class stub. This is used to represent classes with are not accessible (e.g. private)"""
-    classes_done.add(class_name)
-    local_class_name = class_name.split("$")[
-        -1
-    ]  # in case the class is an nested class ("Class$NestedClass") ...
-    output.append(f"class {local_class_name}: ...")
+# ---------------------------------------------------------------------------
+# Package-level driver (mirrors generate_stubs_for_java_package)
+# ---------------------------------------------------------------------------
+
+DEFAULT_CLASSPATH = ["asm-9.6.jar", "asm-tree-9.6.jar"]
+
+
+def _worker_init(jvmpath: str | None, log_level: int) -> None:
+    """Start a JVM in this worker process and register shutdown via atexit."""
+    import atexit
+
+    import jpype  # type: ignore
+    import jpype.imports  # type: ignore
+
+    logging.basicConfig(level=log_level)
+    jpype.startJVM(jvmpath=jvmpath, classpath=DEFAULT_CLASSPATH)
+    atexit.register(jpype.shutdownJVM)
+
+
+def _process_package(
+    package_dir: str,
+    class_files: list[str],
+    package_class_data: dict[str, bytes],
+    output_dir: Path,
+) -> None:
+    """Process one Java package and write its __init__.pyi."""
+    import time
+
+    top_level_files = [f for f in class_files if "$" not in Path(f).stem]
+    t0 = time.perf_counter()
+    log.info(
+        f"Processing package {package_dir} "
+        f"({len(top_level_files)} top-level / {len(class_files)} total classes)..."
+    )
+
+    # Pre-populate with all top-level class names so that intra-package
+    # references (e.g., superclass) always use the short name regardless
+    # of alphabetical processing order (e.g., D before P).
+    classes_done: set[str] = {Path(f).stem for f in top_level_files}
+    classes_used: set[str] = set()
+    combined_imports: set[str] = set()
+    combined_code: list[str] = []
+
+    for class_file in sorted(top_level_files):
+        try:
+            stub = convert_java_class_to_python_stub(
+                class_file,
+                package_class_data[class_file[:-6]],
+                all_class_data=package_class_data,
+                classes_done=classes_done,
+                classes_used=classes_used,
+            )
+        except Exception as e:
+            log.warning(f"Skipping {class_file}: {e}")
+            continue
+        combined_imports.update(stub.imports)
+        combined_code.extend(stub.type_vars)  # module-level TypeVar declarations
+        combined_code.extend(stub.code)  # class definition
+
+    if package_dir == "java":
+        add_chaquopy_bindings_to_java_package(
+            output_dir / "java", combined_imports, combined_code
+        )
+
+    output_file = output_dir / Path(package_dir) / "__init__.pyi"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with output_file.open("w", encoding="utf-8") as f:
+        for imp in sorted(combined_imports):
+            f.write(imp + "\n")
+        f.write("\n\n")
+        for line in combined_code:
+            f.write(line + "\n")
+
+    elapsed = time.perf_counter() - t0
+    log.info(f"Finished package {package_dir} in {elapsed:.2f}s")
+
+
+def convert_jar_to_python_stubs(
+    jar_file_path: Path, output_dir: Path, jvmpath: str | None = None
+) -> None:
+    """
+    Extract all .class files from the given JAR file and convert them to Python stubs.
+    Produces a directory tree with __init__.pyi files.
+    """
+    if len(output_dir.resolve().parts) < 3:
+        raise ValueError(
+            f"output_dir '{output_dir}' is dangerously close to the filesystem root, "
+            "refusing to delete it."
+        )
+    shutil.rmtree(output_dir, ignore_errors=True)
+
+    with zipfile.ZipFile(jar_file_path, "r") as jar:
+        class_entries = [e for e in jar.namelist() if e.endswith(".class")]
+
+        # Group by package directory and pre-read all class data so workers
+        # don't need to access the ZIP concurrently.
+        packages: dict[str, list[str]] = {}
+        for class_file in class_entries:
+            package_dir = str(Path(class_file).parent)
+            packages.setdefault(package_dir, []).append(class_file)
+
+        all_class_data: dict[str, dict[str, bytes]] = {
+            package_dir: {f[:-6]: jar.read(f) for f in class_files}
+            for package_dir, class_files in packages.items()
+        }
+
+    # Ensure the "java" package is present so that the base chaquopy bindings are generated.
+    packages.setdefault("java", [])
+    all_class_data.setdefault("java", {})
+
+    # Each worker process gets its own JVM instance, achieving true parallelism
+    # unhindered by the GIL.  All data passed to workers is plain bytes/strings
+    # (fully picklable) so spawn-based multiprocessing works fine on macOS.
+    # "spawn" is used explicitly (instead of the Linux default "fork") because
+    # forking a process with a running JVM causes undefined behaviour in JPype.
+    mp_context = multiprocessing.get_context("spawn")
+    with concurrent.futures.ProcessPoolExecutor(
+        initializer=_worker_init,
+        initargs=(jvmpath, log.getEffectiveLevel()),
+        mp_context=mp_context,
+    ) as pool:
+        futures = [
+            pool.submit(
+                _process_package,
+                package_dir,
+                class_files,
+                all_class_data[package_dir],
+                output_dir,
+            )
+            for package_dir, class_files in packages.items()
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            if exc := future.exception():
+                log.error(f"Package processing failed: {exc}")

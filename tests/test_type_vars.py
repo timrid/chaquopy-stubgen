@@ -55,3 +55,33 @@ result = Objects.compare(str1, num1, cmp)  # *1
     }
 
     run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
+
+
+def test_primitive_as_type_argument(mypy_project_dir: Path):
+    code = """\
+from java.net import StandardSocketOptions
+
+reveal_type(StandardSocketOptions.SO_KEEPALIVE)  # *1
+reveal_type(StandardSocketOptions.IP_MULTICAST_TTL)  # *2
+"""
+
+    expected_mypy_output = {
+        "*1": 'note: Revealed type is "java.net.SocketOption[java.lang.Boolean]"',
+        "*2": 'note: Revealed type is "java.net.SocketOption[java.lang.Integer]"',
+    }
+
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
+
+
+def test_string_as_type_argument(mypy_project_dir: Path):
+    code = """\
+from java.lang import String
+
+reveal_type(String.CASE_INSENSITIVE_ORDER)  # *1
+"""
+
+    expected_mypy_output = {
+        "*1": 'note: Revealed type is "java.util.Comparator[java.lang.String]"',
+    }
+
+    run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)

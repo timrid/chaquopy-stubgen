@@ -10,7 +10,7 @@
             "request": "launch",
             "module": "chaquopy_stubgen",
             "console": "integratedTerminal",
-            "args": "java android --classpath ./tests/android-35.jar --output-dir ./dist"
+            "args": "./tests/android-35.jar --output-dir ./dist/stubs"
         }
     ]
 }
