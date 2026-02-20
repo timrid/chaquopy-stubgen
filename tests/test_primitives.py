@@ -99,14 +99,14 @@ reveal_type(p.print_)  # *1
     expected_mypy_output = {
         "*1": (
             'note: Revealed type is "Overload'
-            '(def (c: builtins.str | java.primitive.jchar | java.lang.Character), '
-            'def (d: builtins.float | java.primitive.jdouble | java.lang.Double), '
-            'def (f: builtins.float | java.primitive.jfloat | java.lang.Float), '
-            'def (i: builtins.int | java.primitive.jint | java.lang.Integer), '
-            'def (l: builtins.int | java.primitive.jlong | java.lang.Long), '
-            'def (obj: java.lang.Object | builtins.int | builtins.bool | builtins.float | builtins.str), '
-            'def (s: builtins.str | java.lang.String), def (b: builtins.bool | java.primitive.jboolean | java.lang.Boolean), '
-            'def (s: java.chaquopy.JavaArrayJChar))"'
+            '(def (builtins.str | java.primitive.jchar | java.lang.Character), '
+            'def (builtins.float | java.primitive.jdouble | java.lang.Double), '
+            'def (builtins.float | java.primitive.jfloat | java.lang.Float), '
+            'def (builtins.int | java.primitive.jint | java.lang.Integer), '
+            'def (builtins.int | java.primitive.jlong | java.lang.Long), '
+            'def (java.lang.Object | builtins.int | builtins.bool | builtins.float | builtins.str), '
+            'def (builtins.str | java.lang.String), def (builtins.bool | java.primitive.jboolean | java.lang.Boolean), '
+            'def (java.chaquopy.JavaArrayJChar))"'
         )
     }
 

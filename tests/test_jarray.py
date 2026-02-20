@@ -46,20 +46,20 @@ String(int_array)  # *4
 error: No overload variant of "String" matches argument type "JavaArrayJInt"
 hint: Possible overload variants:
 hint:     def String(self) -> String
-hint:     def String(self, original: str | String) -> String
-hint:     def String(self, buffer: StringBuffer) -> String
-hint:     def String(self, builder: StringBuilder) -> String
-hint:     def String(self, bytes: JavaArrayJByte) -> String
-hint:     def String(self, value: JavaArrayJChar) -> String
-hint:     def String(self, ascii: JavaArrayJByte, hibyte: int | jint | Integer) -> String
-hint:     def String(self, bytes: JavaArrayJByte, charsetName: str | String) -> String
-hint:     def String(self, bytes: JavaArrayJByte, charset: Charset) -> String
-hint:     def String(self, bytes: JavaArrayJByte, offset: int | jint | Integer, length: int | jint | Integer) -> String
-hint:     def String(self, value: JavaArrayJChar, offset: int | jint | Integer, count: int | jint | Integer) -> String
-hint:     def String(self, codePoints: JavaArrayJInt, offset: int | jint | Integer, count: int | jint | Integer) -> String
-hint:     def String(self, ascii: JavaArrayJByte, hibyte: int | jint | Integer, offset: int | jint | Integer, count: int | jint | Integer) -> String
-hint:     def String(self, bytes: JavaArrayJByte, offset: int | jint | Integer, length: int | jint | Integer, charsetName: str | String) -> String
-hint:     def String(self, bytes: JavaArrayJByte, offset: int | jint | Integer, length: int | jint | Integer, charset: Charset) -> String"""
+hint:     def String(self, str | String, /) -> String
+hint:     def String(self, StringBuffer, /) -> String
+hint:     def String(self, StringBuilder, /) -> String
+hint:     def String(self, JavaArrayJByte, /) -> String
+hint:     def String(self, JavaArrayJChar, /) -> String
+hint:     def String(self, JavaArrayJByte, int | jint | Integer, /) -> String
+hint:     def String(self, JavaArrayJByte, str | String, /) -> String
+hint:     def String(self, JavaArrayJByte, Charset, /) -> String
+hint:     def String(self, JavaArrayJByte, int | jint | Integer, int | jint | Integer, /) -> String
+hint:     def String(self, JavaArrayJChar, int | jint | Integer, int | jint | Integer, /) -> String
+hint:     def String(self, JavaArrayJInt, int | jint | Integer, int | jint | Integer, /) -> String
+hint:     def String(self, JavaArrayJByte, int | jint | Integer, int | jint | Integer, int | jint | Integer, /) -> String
+hint:     def String(self, JavaArrayJByte, int | jint | Integer, int | jint | Integer, str | String, /) -> String
+hint:     def String(self, JavaArrayJByte, int | jint | Integer, int | jint | Integer, Charset, /) -> String"""
     }
 
     run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)

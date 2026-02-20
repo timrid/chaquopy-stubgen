@@ -314,6 +314,18 @@ def _generate_method_stub_asm(
                     )
                 sig_parts.append(safe_name)
 
+        # Java does not support keyword arguments; enforce positional-only calling
+        # by inserting '/' after the last regular parameter.  '/' must come before
+        # any *varargs entry, and is only added when at least one regular Java
+        # parameter (not 'self', not *varargs) is present.
+        regular_java_params = [a for a in sig.args if a.name != "self" and not a.var_args]
+        if regular_java_params:
+            varargs_idx = next(
+                (i for i, arg in enumerate(sig.args) if arg.var_args),
+                len(sig.args),
+            )
+            sig_parts.insert(varargs_idx, "/")
+
         if is_constructor:
             output.append(f"def __init__({', '.join(sig_parts)}) -> None: ...")
         else:

@@ -47,8 +47,8 @@ def _parse_mypy_jsonl_output(mypy_stdout: str) -> list[MypyMessage]:
 def run_mypy(
     project_dir: Path,
     test_code: str,
-) -> str:
-    """Run mypy on the given test code and return the mypy stdout."""
+) -> tuple[str, str]:
+    """Run mypy on the given test code and return (mypy_stdout, testfile_name)."""
     testfile_name = "testfile.py"
     with project_dir.joinpath(testfile_name).open("w") as f:
         f.write(test_code)
@@ -61,7 +61,7 @@ def run_mypy(
     logger.debug(f"mypy stderr: {mypy_stderr}")
     logger.debug(f"mypy returncode: {mypy_returncode}")
 
-    return mypy_stdout
+    return mypy_stdout, testfile_name
 
 
 def run_and_assert_mypy(
@@ -78,10 +78,10 @@ def run_and_assert_mypy(
     - A raw string containing the expected mypy output. In this case, the function will compare
       the raw mypy stdout with the expected string.
     """
-    mypy_stdout = run_mypy(project_dir, test_code)
+    mypy_stdout, testfile_name = run_mypy(project_dir, test_code)
     if isinstance(expected_output, dict):
         mypy_output = _parse_mypy_jsonl_output(mypy_stdout)
-        assert_mypy_json_output(test_code, mypy_output, expected_output)
+        assert_mypy_json_output(test_code, mypy_output, expected_output, testfile_name)
     else:
         # some errors like syntax errors are not returned as json message. In
         # this case, we just check the raw stdout for the expected error message.
@@ -119,6 +119,7 @@ def assert_mypy_json_output(
     code: str,
     mypy_output: list[MypyMessage],
     expected_output: dict[str, str] | dict[str, str | list[str]],
+    testfile_name: str = "testfile.py",
 ):
     """Assert that the mypy output matches the expected output for the given code."""
 
@@ -130,9 +131,12 @@ def assert_mypy_json_output(
     if missing_markers:
         assert False, f"Expected markers not found in code: {', '.join(sorted(missing_markers))}"
 
-    # Group messages by line number
+    # Group messages by line number, ignoring messages from other files
+    # (e.g. "defined here" notes that point back to stub definitions).
     result_by_line: dict[int, list[MypyMessage]] = {}
     for msg in mypy_output:
+        if msg["file"] != testfile_name:
+            continue
         line = msg["line"]
         if line not in result_by_line:
             result_by_line[line] = []
@@ -170,5 +174,5 @@ def assert_mypy_json_output(
         unexpected_msgs = []
         for line, msgs in result_by_line.items():
             for msg in msgs:
-                unexpected_msgs.append(f"line {line}: {_format_mypy_msg(msg)}")
+                unexpected_msgs.append(f"{msg['file']}:{line}: {_format_mypy_msg(msg)}")
         assert False, "Unexpected mypy messages:\n" + "\n".join(unexpected_msgs)
