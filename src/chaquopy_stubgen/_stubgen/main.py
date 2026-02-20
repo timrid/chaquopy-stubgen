@@ -15,9 +15,9 @@ import shutil
 import zipfile
 from pathlib import Path
 
-from chaquopy_stubgen._class_stub import convert_java_class_to_python_stub
+from chaquopy_stubgen._stubgen.class_stub import convert_java_class_to_python_stub
 from chaquopy_stubgen._log import configure_logging
-from chaquopy_stubgen.chaquopy_bindings import add_chaquopy_bindings_to_java_package
+from chaquopy_stubgen._stubgen.chaquopy_bindings import add_chaquopy_bindings_to_java_package
 
 
 log = logging.getLogger(__name__)

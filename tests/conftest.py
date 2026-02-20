@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-import chaquopy_stubgen.stubgen
+import chaquopy_stubgen
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +24,8 @@ def stub_dir() -> Generator[Path, None, None]:
 
         logger.debug(f"Generating stubs in {tmpdir}...")
 
-        chaquopy_stubgen.stubgen.convert_jar_to_python_stubs(
-            ANDROID_JAR, tmpdir
+        chaquopy_stubgen.convert_to_python_stubs(
+            [ANDROID_JAR], tmpdir
         )
 
         # # Rename "java-stubs" to "java"

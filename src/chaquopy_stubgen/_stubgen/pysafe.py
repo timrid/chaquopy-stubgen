@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import keyword
 
-from chaquopy_stubgen._types import TypeStr, TypeVarStr
+from chaquopy_stubgen._stubgen.types import TypeStr, TypeVarStr
 
 EXTRA_RESERVED_WORDS = {"exec", "print"}  # Removed in Python 3.0
 

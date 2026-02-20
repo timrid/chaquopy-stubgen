@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from chaquopy_stubgen._types import (
+from chaquopy_stubgen._stubgen.types import (
     PARAMETER_TO_ARRAY_TYPE_MAP,
     TYPE_NAME_TO_PRIMITIVE_MAP,
     TypeStr,

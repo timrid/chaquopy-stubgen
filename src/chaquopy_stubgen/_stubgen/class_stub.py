@@ -8,15 +8,15 @@ import logging
 import jpype
 import jpype.imports
 
-from chaquopy_stubgen._pysafe import pysafe, to_annotated_type, to_type_var_declaration
-from chaquopy_stubgen._sig_parser import (
+from chaquopy_stubgen._stubgen.pysafe import pysafe, to_annotated_type, to_type_var_declaration
+from chaquopy_stubgen._stubgen.sig_parser import (
     make_type_vars,
     parse_class_type_params,
     parse_field_type,
     parse_method_signature,
     parse_super_types,
 )
-from chaquopy_stubgen._types import (
+from chaquopy_stubgen._stubgen.types import (
     ACC_BRIDGE,
     ACC_PROTECTED,
     ACC_PUBLIC,
@@ -29,7 +29,7 @@ from chaquopy_stubgen._types import (
     TypeStr,
     TypeVarStr,
 )
-from chaquopy_stubgen.whitelists import METHOD_CAN_RETURN_NONE
+from chaquopy_stubgen._stubgen.whitelists import METHOD_CAN_RETURN_NONE
 
 log = logging.getLogger(__name__)
 
