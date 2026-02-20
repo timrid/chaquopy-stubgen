@@ -9,17 +9,19 @@ Example call `uv run -m chaquopy_stubgen "$ANDROID_HOME/platforms/android-35/and
 ```
 $ uv run -m chaquopy_stubgen --help
 usage: __main__.py [-h] [--jvmpath JVMPATH] [--output-dir OUTPUT_DIR]
-                   jars [jars ...]
+                   inputs [inputs ...]
 
 Generate Python Type Stubs for Java classes that are optimized for chaquopy.
 
 positional arguments:
-  jars                  List of .jar or .aar files to generate stubs for.
+  inputs                List of .jar/.aar files, Android platform shorthands (e.g.
+                        'android-35'), or Maven coordinates (e.g.
+                        'androidx.appcompat:appcompat:1.0.2') to generate stubs for.
 
 options:
   -h, --help            show this help message and exit
-  --jvmpath JVMPATH     path to the JVM ("libjvm.so", "jvm.dll", ...) (default:
-                        use system default JVM)
+  --jvmpath JVMPATH     path to the JVM ("libjvm.so", "jvm.dll", ...) (default: use
+                        system default JVM)
   --output-dir OUTPUT_DIR
                         path to write stubs to (default: ./dist/stubs)
 ```
