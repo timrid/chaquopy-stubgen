@@ -8,6 +8,7 @@ without requiring a running JVM with the target classes loaded (only ASM itself 
 from __future__ import annotations
 
 import concurrent.futures
+import io
 import logging
 import multiprocessing
 import shutil
@@ -15,6 +16,7 @@ import zipfile
 from pathlib import Path
 
 from chaquopy_stubgen._class_stub import convert_java_class_to_python_stub
+from chaquopy_stubgen._log import configure_logging
 from chaquopy_stubgen.chaquopy_bindings import add_chaquopy_bindings_to_java_package
 
 
@@ -30,7 +32,7 @@ def _worker_init(jvmpath: str | None, log_level: int) -> None:
     import jpype  # type: ignore
     import jpype.imports  # type: ignore
 
-    logging.basicConfig(level=log_level)
+    configure_logging(log_level)
     jpype.startJVM(jvmpath=jvmpath, classpath=DEFAULT_CLASSPATH)
     atexit.register(jpype.shutdownJVM)
 
@@ -93,38 +95,89 @@ def _process_package(
     log.info(f"Finished package {package_dir} in {elapsed:.2f}s")
 
 
-def convert_jar_to_python_stubs(
-    jar_file_path: Path, output_dir: Path, jvmpath: str | None = None
+def _open_jar_from_file(file_path: Path) -> zipfile.ZipFile:
+    """
+    Open a .jar or .aar file and return a ZipFile pointing to the JAR contents.
+
+    For .jar files the archive is opened directly.
+    For .aar files ``classes.jar`` is extracted from the archive and wrapped in a
+    BytesIO buffer so that the caller gets the same ZipFile interface in both cases.
+    Raises ValueError for unsupported file extensions or when no ``classes.jar`` is
+    found inside an .aar.
+    """
+    suffix = file_path.suffix.lower()
+    if suffix == ".jar":
+        return zipfile.ZipFile(file_path, "r")
+    elif suffix == ".aar":
+        with zipfile.ZipFile(file_path, "r") as aar:
+            aar_entries = aar.namelist()
+            if "classes.jar" not in aar_entries:
+                raise ValueError(
+                    f"No 'classes.jar' found in AAR '{file_path}'. "
+                    f"Available entries: {aar_entries}"
+                )
+            jar_data = aar.read("classes.jar")
+        return zipfile.ZipFile(io.BytesIO(jar_data), "r")
+    else:
+        raise ValueError(
+            f"Unsupported file format '{file_path.suffix}'. Expected '.jar' or '.aar'."
+        )
+
+
+def convert_to_python_stubs(
+    file_paths: list[Path], output_dir: Path, jvmpath: str | None = None
 ) -> None:
     """
-    Extract all .class files from the given JAR file and convert them to Python stubs.
-    Produces a directory tree with __init__.pyi files.
+    Convert one or more .jar or .aar files to Python type stubs.
+
+    Accepts plain ``.jar`` files or Android ``.aar`` archives (whose
+    ``classes.jar`` is used).  Produces a directory tree of ``__init__.pyi``
+    files under *output_dir*.
+
+    Raises ValueError if the same Java package appears in more than one of the
+    provided files — all files are inspected before any output is written.
     """
     if len(output_dir.resolve().parts) < 3:
         raise ValueError(
             f"output_dir '{output_dir}' is dangerously close to the filesystem root, "
             "refusing to delete it."
         )
+
+    # Collect packages and class data from all files before touching the output
+    # directory so that collision errors are raised without side effects.
+    packages: dict[str, list[str]] = {}
+    all_class_data: dict[str, dict[str, bytes]] = {}
+    for file_path in file_paths:
+        with _open_jar_from_file(file_path) as jar:
+            class_entries = [e for e in jar.namelist() if e.endswith(".class")]
+
+            # Group by package directory
+            file_packages: dict[str, list[str]] = {}
+            for class_file in class_entries:
+                package_dir = str(Path(class_file).parent)
+                file_packages.setdefault(package_dir, []).append(class_file)
+
+            # Check for collisions with already-collected packages
+            collisions = sorted(set(file_packages) & set(packages))
+            if collisions:
+                raise ValueError(
+                    f"Package collision detected when loading '{file_path}': "
+                    f"{collisions}"
+                )
+
+            for package_dir, class_files in file_packages.items():
+                packages[package_dir] = class_files
+                all_class_data[package_dir] = {
+                    f.removesuffix(".class"): jar.read(f) for f in class_files
+                }
+
     shutil.rmtree(output_dir, ignore_errors=True)
 
-    with zipfile.ZipFile(jar_file_path, "r") as jar:
-        class_entries = [e for e in jar.namelist() if e.endswith(".class")]
-
-        # Group by package directory and pre-read all class data so workers
-        # don't need to access the ZIP concurrently.
-        packages: dict[str, list[str]] = {}
-        for class_file in class_entries:
-            package_dir = str(Path(class_file).parent)
-            packages.setdefault(package_dir, []).append(class_file)
-
-        all_class_data: dict[str, dict[str, bytes]] = {
-            package_dir: {f.removesuffix(".class"): jar.read(f) for f in class_files}
-            for package_dir, class_files in packages.items()
-        }
-
-    # Ensure the "java" package is present so that the base chaquopy bindings are generated.
-    packages.setdefault("java", [])
-    all_class_data.setdefault("java", {})
+    # Only inject the synthetic "java" package (chaquopy bindings) when at least
+    # one sub-package of "java" (e.g. "java/lang", "java/util") is present.
+    if any(p.startswith("java/") for p in packages):
+        packages.setdefault("java", [])
+        all_class_data.setdefault("java", {})
 
     # Each worker process gets its own JVM instance, achieving true parallelism
     # unhindered by the GIL.  All data passed to workers is plain bytes/strings
