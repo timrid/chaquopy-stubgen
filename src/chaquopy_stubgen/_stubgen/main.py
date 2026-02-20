@@ -22,7 +22,11 @@ from chaquopy_stubgen._stubgen.chaquopy_bindings import add_chaquopy_bindings_to
 
 log = logging.getLogger(__name__)
 
-DEFAULT_CLASSPATH = ["asm-9.6.jar", "asm-tree-9.6.jar"]
+_JVM_LIBS_DIR = Path(__file__).parent.parent / "_jvm_libs"
+DEFAULT_CLASSPATH = [
+    str(_JVM_LIBS_DIR / "asm-9.6.jar"),
+    str(_JVM_LIBS_DIR / "asm-tree-9.6.jar"),
+]
 
 
 def _worker_init(jvmpath: str | None, log_level: int) -> None:
