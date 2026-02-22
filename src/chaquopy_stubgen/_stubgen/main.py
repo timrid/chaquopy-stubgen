@@ -129,7 +129,10 @@ def _open_jar_from_file(file_path: Path) -> zipfile.ZipFile:
 
 
 def convert_to_python_stubs(
-    file_paths: list[Path], output_dir: Path, jvmpath: str | None = None
+    file_paths: list[Path],
+    output_dir: Path,
+    jvmpath: str | None = None,
+    clear_output_dir: bool = True,
 ) -> None:
     """
     Convert one or more .jar or .aar files to Python type stubs.
@@ -140,6 +143,10 @@ def convert_to_python_stubs(
 
     Raises ValueError if the same Java package appears in more than one of the
     provided files — all files are inspected before any output is written.
+
+    If *clear_output_dir* is ``False`` the output directory is not deleted
+    before writing; existing files will be overwritten but unrelated files
+    are kept.
     """
     if len(output_dir.resolve().parts) < 3:
         raise ValueError(
@@ -175,7 +182,8 @@ def convert_to_python_stubs(
                     f.removesuffix(".class"): jar.read(f) for f in class_files
                 }
 
-    shutil.rmtree(output_dir, ignore_errors=True)
+    if clear_output_dir:
+        shutil.rmtree(output_dir, ignore_errors=True)
 
     # Only inject the synthetic "java" package (chaquopy bindings) when at least
     # one sub-package of "java" (e.g. "java/lang", "java/util") is present.

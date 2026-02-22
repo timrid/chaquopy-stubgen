@@ -44,6 +44,12 @@ def main() -> None:
         default="./dist/stubs",
         help="path to write stubs to (default: ./dist/stubs)",
     )
+    parser.add_argument(
+        "--no-clean",
+        action="store_true",
+        default=False,
+        help="skip clearing the output directory before generating stubs",
+    )
 
     args = parser.parse_args()
 
@@ -68,6 +74,8 @@ def main() -> None:
 
     log.info(f"Generating stubs for {[str(p) for p in file_paths]} to {output_dir}")
     t0 = time.perf_counter()
-    convert_to_python_stubs(file_paths, output_dir, jvmpath=args.jvmpath)
+    convert_to_python_stubs(
+        file_paths, output_dir, jvmpath=args.jvmpath, clear_output_dir=not args.no_clean
+    )
     elapsed = time.perf_counter() - t0
     log.info(f"Generation done in {elapsed:.1f}s.")
