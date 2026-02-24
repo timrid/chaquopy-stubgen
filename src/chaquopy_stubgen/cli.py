@@ -28,9 +28,9 @@ def main() -> None:
         type=str,
         nargs="+",
         help=(
-            "List of .jar/.aar files, Android platform shorthands "
-            "(e.g. 'android-35'), or Maven coordinates "
-            "(e.g. 'androidx.appcompat:appcompat:1.0.2') to generate stubs for."
+            "List of .jar/.aar files, directories containing .class files, "
+            "Android platform shorthands (e.g. 'android-35'), "
+            "or Maven coordinates (e.g. 'androidx.appcompat:appcompat:1.0.2') to generate stubs for."
         ),
     )
     parser.add_argument(
@@ -54,28 +54,33 @@ def main() -> None:
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
-    file_paths: list[Path] = []
+    input_paths: list[Path] = []
     for inp in args.inputs:
         if inp.endswith(".jar") or inp.endswith(".aar"):
-            file_paths.append(Path(inp))
+            input_paths.append(Path(inp))
         elif is_android_shorthand(inp):
             log.info(f"Resolving Android platform {inp}...")
-            file_paths.append(resolve_android_jar(inp))
+            input_paths.append(resolve_android_jar(inp))
         elif is_maven_coordinate(inp):
             coord = parse_maven_coordinate(inp)
             log.info(f"Resolving Maven artifact {coord}...")
-            file_paths.append(resolve_maven_artifact(coord))
+            input_paths.append(resolve_maven_artifact(coord))
+        elif Path(inp).is_dir():
+            input_paths.append(Path(inp))
         else:
             parser.error(
-                f"Input {inp!r} is neither a .jar/.aar file, an Android platform shorthand "
-                "(e.g. 'android-35'), nor a valid Maven coordinate "
+                f"Input {inp!r} is neither a .jar/.aar file, a directory containing .class files, "
+                "an Android platform shorthand (e.g. 'android-35'), nor a valid Maven coordinate "
                 "(expected format: 'groupId:artifactId:version')."
             )
 
-    log.info(f"Generating stubs for {[str(p) for p in file_paths]} to {output_dir}")
+    log.info(f"Generating stubs for {[str(p) for p in input_paths]} to {output_dir}")
     t0 = time.perf_counter()
     convert_to_python_stubs(
-        file_paths, output_dir, jvmpath=args.jvmpath, clear_output_dir=not args.no_clean
+        input_paths,
+        output_dir,
+        jvmpath=args.jvmpath,
+        clear_output_dir=not args.no_clean,
     )
     elapsed = time.perf_counter() - t0
     log.info(f"Generation done in {elapsed:.1f}s.")

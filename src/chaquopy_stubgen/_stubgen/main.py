@@ -13,12 +13,14 @@ import logging
 import multiprocessing
 import shutil
 import zipfile
+from collections.abc import Iterable
 from pathlib import Path
 
-from chaquopy_stubgen._stubgen.class_stub import convert_java_class_to_python_stub
 from chaquopy_stubgen._log import configure_logging
-from chaquopy_stubgen._stubgen.chaquopy_bindings import add_chaquopy_bindings_to_java_package
-
+from chaquopy_stubgen._stubgen.chaquopy_bindings import (
+    add_chaquopy_bindings_to_java_package,
+)
+from chaquopy_stubgen._stubgen.class_stub import convert_java_class_to_python_stub
 
 log = logging.getLogger(__name__)
 
@@ -99,7 +101,7 @@ def _process_package(
     log.info(f"Finished package {package_dir} in {elapsed:.2f}s")
 
 
-def _open_jar_from_file(file_path: Path) -> zipfile.ZipFile:
+def _open_jar_or_aar_from_file(file_path: Path) -> zipfile.ZipFile:
     """
     Open a .jar or .aar file and return a ZipFile pointing to the JAR contents.
 
@@ -128,21 +130,40 @@ def _open_jar_from_file(file_path: Path) -> zipfile.ZipFile:
         )
 
 
+def _collect_packages_from_entries(
+    entries: Iterable[tuple[str, bytes]],
+) -> tuple[dict[str, list[str]], dict[str, dict[str, bytes]]]:
+    """
+    Group an iterable of ``(relative_class_path, bytecode)`` pairs by their
+    parent directory (Java package), returning the two-level structure used
+    throughout the stub-generation pipeline.
+    """
+    packages: dict[str, list[str]] = {}
+    class_data: dict[str, dict[str, bytes]] = {}
+    for class_file, data in entries:
+        package_dir = str(Path(class_file).parent)
+        packages.setdefault(package_dir, []).append(class_file)
+        class_data.setdefault(package_dir, {})[class_file.removesuffix(".class")] = data
+    return packages, class_data
+
+
 def convert_to_python_stubs(
-    file_paths: list[Path],
+    input_paths: list[Path],
     output_dir: Path,
     jvmpath: str | None = None,
     clear_output_dir: bool = True,
 ) -> None:
     """
-    Convert one or more .jar or .aar files to Python type stubs.
+    Convert one or more .jar/.aar files or directories of .class files to
+    Python type stubs.
 
     Accepts plain ``.jar`` files or Android ``.aar`` archives (whose
-    ``classes.jar`` is used).  Produces a directory tree of ``__init__.pyi``
-    files under *output_dir*.
+    ``classes.jar`` is used), as well as directories that contain ``.class``
+    files (searched recursively).  Produces a directory tree of
+    ``__init__.pyi`` files under *output_dir*.
 
     Raises ValueError if the same Java package appears in more than one of the
-    provided files — all files are inspected before any output is written.
+    provided inputs — all inputs are inspected before any output is written.
 
     If *clear_output_dir* is ``False`` the output directory is not deleted
     before writing; existing files will be overwritten but unrelated files
@@ -154,33 +175,32 @@ def convert_to_python_stubs(
             "refusing to delete it."
         )
 
-    # Collect packages and class data from all files before touching the output
+    # Collect packages and class data from all inputs before touching the output
     # directory so that collision errors are raised without side effects.
     packages: dict[str, list[str]] = {}
     all_class_data: dict[str, dict[str, bytes]] = {}
-    for file_path in file_paths:
-        with _open_jar_from_file(file_path) as jar:
-            class_entries = [e for e in jar.namelist() if e.endswith(".class")]
-
-            # Group by package directory
-            file_packages: dict[str, list[str]] = {}
-            for class_file in class_entries:
-                package_dir = str(Path(class_file).parent)
-                file_packages.setdefault(package_dir, []).append(class_file)
-
-            # Check for collisions with already-collected packages
-            collisions = sorted(set(file_packages) & set(packages))
-            if collisions:
-                raise ValueError(
-                    f"Package collision detected when loading '{file_path}': "
-                    f"{collisions}"
+    for input_path in input_paths:
+        suffix = input_path.suffix.lower()
+        if suffix in (".jar", ".aar"):
+            with _open_jar_or_aar_from_file(input_path) as jar:
+                new_packages, new_class_data = _collect_packages_from_entries(
+                    (f, jar.read(f)) for f in jar.namelist() if f.endswith(".class")
                 )
+        else:
+            new_packages, new_class_data = _collect_packages_from_entries(
+                (f.relative_to(input_path).as_posix(), f.read_bytes())
+                for f in sorted(input_path.rglob("*.class"))
+            )
 
-            for package_dir, class_files in file_packages.items():
-                packages[package_dir] = class_files
-                all_class_data[package_dir] = {
-                    f.removesuffix(".class"): jar.read(f) for f in class_files
-                }
+        collisions = sorted(set(new_packages) & set(packages))
+        if collisions:
+            raise ValueError(
+                f"Package collision detected when loading '{input_path}': {collisions}"
+            )
+
+        for package_dir, class_files in new_packages.items():
+            packages[package_dir] = class_files
+            all_class_data[package_dir] = new_class_data[package_dir]
 
     if clear_output_dir:
         shutil.rmtree(output_dir, ignore_errors=True)
@@ -215,4 +235,3 @@ def convert_to_python_stubs(
         for future in concurrent.futures.as_completed(futures):
             if exc := future.exception():
                 log.error(f"Package processing failed: {exc}")
-
