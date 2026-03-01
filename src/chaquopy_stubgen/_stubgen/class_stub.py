@@ -102,10 +102,6 @@ def _parse_descriptor_params_for_whitelist(desc: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _is_accessible(access: int) -> bool:
-    return bool(access & (ACC_PUBLIC | ACC_PROTECTED))
-
-
 def _get_param_names_from_local_vars(m) -> list[str] | None:
     """
     Extract parameter names from the MethodNode's localVariables table.

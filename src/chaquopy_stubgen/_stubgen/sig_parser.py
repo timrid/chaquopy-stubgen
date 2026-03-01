@@ -213,15 +213,6 @@ def _parse_type_signature(
     raise ValueError(f"Unexpected character {c!r} at pos {pos} in signature {sig!r}")
 
 
-def _parse_descriptor_type(
-    desc: str, pos: int, is_argument: bool = False, is_array_param: bool = False
-) -> _ParseResult:
-    """Parse a single type from a plain (non-generic) method descriptor."""
-    return _parse_type_signature(
-        desc, pos, [], is_argument=is_argument, is_array_param=is_array_param
-    )
-
-
 def parse_class_type_params(sig: str) -> tuple[list[tuple[str, TypeStr | None]], int]:
     """
     Parse the formal type parameter declarations at the start of a class or method
