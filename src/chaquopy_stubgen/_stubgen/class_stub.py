@@ -8,7 +8,11 @@ import logging
 import jpype
 import jpype.imports
 
-from chaquopy_stubgen._stubgen.pysafe import pysafe, to_annotated_type, to_type_var_declaration
+from chaquopy_stubgen._stubgen.pysafe import (
+    pysafe,
+    to_annotated_type,
+    to_type_var_declaration,
+)
 from chaquopy_stubgen._stubgen.sig_parser import (
     make_type_vars,
     parse_class_type_params,
@@ -317,7 +321,9 @@ def _generate_method_stub_asm(
         # by inserting '/' after the last regular parameter.  '/' must come before
         # any *varargs entry, and is only added when at least one regular Java
         # parameter (not 'self', not *varargs) is present.
-        regular_java_params = [a for a in sig.args if a.name != "self" and not a.var_args]
+        regular_java_params = [
+            a for a in sig.args if a.name != "self" and not a.var_args
+        ]
         if regular_java_params:
             varargs_idx = next(
                 (i for i, arg in enumerate(sig.args) if arg.var_args),
