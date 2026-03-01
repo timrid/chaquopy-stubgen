@@ -25,18 +25,21 @@ def translate_type_name(
     is_type_arg: bool = False,
 ) -> TypeStr:
     """
-    Translate basic Java types to python types. Note that this conversion is applied for ALL types, no matter if they
-    appear as method argument types, field types, return types, super types, etc.
+    Translate a Java type name to its Python stub representation. This conversion
+    is applied for all positions: method arguments, return types, field types,
+    super types, type arguments, etc.
 
-    Converted types in all cases:
-     - Java primitives (e.g. int) and Java boxed primitives (e.g. Integer)
-     - Java void -> None
-     - java.lang.String -> str, but ONLY IF JPype convertStrings flag is enabled
-     - java.lang.Object -> Any
-     - java.lang.Class -> Type
+    The following types are always translated:
+     - Java primitives (e.g. ``int``) and their boxed equivalents (e.g. ``Integer``)
+     - ``void`` -> ``None``
+     - ``java.lang.String`` -> ``str``
+     - ``java.lang.Object`` -> ``java.lang.Object``
+     - ``java.lang.Class`` -> ``typing.Type``
 
-    Additionally, implicitConversions=True indicates that the type is used as METHOD ARGUMENT. In this case we also
-    apply the mangling by handleImplicitConversions() to account for JPype implicit type conversions.
+    When *is_argument* is ``True`` (i.e. the type appears as a method parameter),
+    chaquopy's implicit conversions are also reflected: additional accepted types are
+    added to a ``Union`` to account for Python values that chaquopy converts
+    automatically (e.g. ``int | bool | float | str`` for ``java.lang.Object``).
     """
     union: list[TypeStr] = []
 
