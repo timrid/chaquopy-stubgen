@@ -7,30 +7,31 @@ def add_chaquopy_bindings_to_java_package(
     """Add the chaquopy api to the main 'java' package"""
     import_output.add("""\
 from java.chaquopy import (
+    Override,
     cast,
+    constructor,
     detach,
+    dynamic_proxy,
     jarray,
     jclass,
-    set_import_enabled,
-    dynamic_proxy,
-    static_proxy,
-    constructor,
     method,
-    Override,
+    set_import_enabled,
+    static_proxy,
 )""")
     import_output.add("""\
 from java.primitive import (
-    jvoid,
     jboolean,
     jbyte,
-    jshort,
+    jchar,
+    jdouble,
+    jfloat,
     jint,
     jlong,
-    jfloat,
-    jdouble,
-    jchar,
+    jshort,
+    jvoid,
 )""")
     class_output.append("""\
+
 __all__ = [
     "cast",
     "detach",
@@ -57,19 +58,18 @@ __all__ = [
         """\
 import typing
 
-from .primitive import (
+from java.lang import Object, Throwable
+from java.primitive import (
     Primitive,
     jboolean,
     jbyte,
-    jshort,
+    jchar,
+    jdouble,
+    jfloat,
     jint,
     jlong,
-    jfloat,
-    jdouble,
-    jchar,
+    jshort,
 )
-
-from java.lang import Object, Throwable
 
 # class.pxi #######################################################################################
 def jclass(clsname: str) -> type[Object]: ...

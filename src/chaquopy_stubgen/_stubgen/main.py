@@ -91,9 +91,16 @@ def _process_package(
     output_file = output_dir / Path(package_dir) / "__init__.pyi"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with output_file.open("w", encoding="utf-8") as f:
-        for imp in sorted(combined_imports):
+        # separate standard library imports from generated imports for readability and for isort compatibility
+        STD_LIB_IMPORTS = {"import typing", "import builtins"}
+        std_lib_imports = combined_imports & STD_LIB_IMPORTS
+        for std_imp in sorted(std_lib_imports):
+            f.write(std_imp + "\n")
+        if len(std_lib_imports) > 0:
+            f.write("\n")
+        other_imports = combined_imports - STD_LIB_IMPORTS
+        for imp in sorted(other_imports):
             f.write(imp + "\n")
-        f.write("\n\n")
         for line in combined_code:
             f.write(line + "\n")
 
