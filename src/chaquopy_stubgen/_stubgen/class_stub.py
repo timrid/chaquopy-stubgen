@@ -189,6 +189,16 @@ def _eliminate_single_use_type_vars(
     return method_type_vars, param_types, ret_type
 
 
+def _unwrap_primitive_array_varargs(pt: TypeStr) -> TypeStr | None:
+    """If *pt* is a primitive array type (e.g. JavaArrayJInt), return the
+    corresponding element TypeStr (e.g. java.jint).  Returns None if *pt* is
+    not a known primitive array type."""
+    for elem_type, array_type_name in PARAMETER_TO_ARRAY_TYPE_MAP.items():
+        if array_type_name == pt.name:
+            return elem_type if isinstance(elem_type, TypeStr) else TypeStr(str(elem_type))
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Method stub generation
 # ---------------------------------------------------------------------------
@@ -254,7 +264,9 @@ def _generate_method_stub_asm(
                 if pt.name == "java.chaquopy.JavaArray" and pt.type_args:
                     pt = pt.type_args[0]
                 elif pt.name in PARAMETER_TO_ARRAY_TYPE_MAP.values():
-                    pass  # leave as-is — rare
+                     # Primitive-array varargs (e.g. JavaArrayJInt): map back to
+                     # the corresponding element type.
+                     pt = _unwrap_primitive_array_varargs(pt) or pt
             # Use real param name from debug info, otherwise arg1/arg2/...
             # Sanitize names that contain '$' (e.g. Kotlin extension receiver
             # parameters are named '$this$methodName' by the Kotlin compiler).
