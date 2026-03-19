@@ -176,7 +176,7 @@ def convert_to_python_stubs(
     before writing; existing files will be overwritten but unrelated files
     are kept.
     """
-    if len(output_dir.resolve().parts) < 3:
+    if clear_output_dir and len(output_dir.resolve().parts) < 3:
         raise ValueError(
             f"output_dir '{output_dir}' is dangerously close to the filesystem root, "
             "refusing to delete it."
