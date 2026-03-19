@@ -36,8 +36,8 @@ java_array_list.add(42)  # *1
         "*1": """\
 error: No overload variant of "add" of "ArrayList" matches argument type "int"
 hint: Possible overload variants:
-hint:     def add(self, e: str) -> bool
-hint:     def add(self, int: int | jint | Integer, e: str) -> None""",
+hint:     def add(self, str, /) -> bool
+hint:     def add(self, int | jint | Integer, str, /) -> None""",
     }
 
     run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)
@@ -56,8 +56,8 @@ java_array_list = ArrayList(pylist)  # *1
 error: No overload variant of "ArrayList" matches argument type "list[str]"
 hint: Possible overload variants:
 hint:     def [_ArrayList__E] ArrayList(self) -> ArrayList[_ArrayList__E]
-hint:     def [_ArrayList__E] ArrayList(self, int: int | jint | Integer) -> ArrayList[_ArrayList__E]
-hint:     def [_ArrayList__E] ArrayList(self, collection: Collection[_ArrayList__E]) -> ArrayList[_ArrayList__E]""",
+hint:     def [_ArrayList__E] ArrayList(self, int | jint | Integer, /) -> ArrayList[_ArrayList__E]
+hint:     def [_ArrayList__E] ArrayList(self, Collection[_ArrayList__E], /) -> ArrayList[_ArrayList__E]""",
     }
 
     run_and_assert_mypy(mypy_project_dir, code, expected_mypy_output)

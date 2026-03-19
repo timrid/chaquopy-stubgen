@@ -42,6 +42,9 @@ dev = [
 [tool.setuptools_scm]
 version_file = "src/chaquopy_stubgen/_version.py"
 
+[tool.setuptools.package-data]
+chaquopy_stubgen = ["_jvm_libs/*.jar"]
+
 [tool.pytest.ini_options]
 addopts = "--doctest-modules -p no:faulthandler"
 
