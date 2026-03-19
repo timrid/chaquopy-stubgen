@@ -239,6 +239,14 @@ def convert_to_python_stubs(
             )
             for package_dir, class_files in packages.items()
         ]
+        exceptions: list[BaseException] = []
         for future in concurrent.futures.as_completed(futures):
             if exc := future.exception():
                 log.error(f"Package processing failed: {exc}")
+                exceptions.append(exc)
+        if exceptions:
+            first_exc = exceptions[0]
+            raise RuntimeError(
+                f"{len(exceptions)} package(s) failed during stub generation; "
+                f"first error: {first_exc}"
+            ) from first_exc
