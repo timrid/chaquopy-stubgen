@@ -110,7 +110,7 @@ def resolve_maven_artifact(
         for base in repositories:
             url = coord._artifact_url(base) + ext
             try:
-                log.info(f"Downloading {url}...")
+                log.info(f"Downloading {url} ...")
                 with urllib.request.urlopen(url) as response:
                     data: bytes = response.read()
             except urllib.error.HTTPError as e:
