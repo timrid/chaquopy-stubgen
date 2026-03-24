@@ -8,7 +8,7 @@ Example call `uv run -m chaquopy_stubgen "$ANDROID_HOME/platforms/android-35/and
 
 ```
 $ uv run -m chaquopy_stubgen --help
-usage: __main__.py [-h] [--jvmpath JVMPATH] [--output-dir OUTPUT_DIR] [--no-clean] inputs [inputs ...]
+usage: __main__.py [-h] [--jvmpath JVMPATH] [--output-dir OUTPUT_DIR] [--no-clean] [--cache-dir CACHE_DIR] inputs [inputs ...]
 
 Generate Python Type Stubs for Java classes that are optimized for chaquopy.
 
@@ -22,6 +22,8 @@ options:
   --output-dir OUTPUT_DIR
                         path to write stubs to (default: ./dist/stubs)
   --no-clean            skip clearing the output directory before generating stubs
+  --cache-dir CACHE_DIR
+                        directory for caching downloaded artifacts (default: ~/.cache/chaquopy-stubgen)
 ```
 
 # Caveats & Limitations

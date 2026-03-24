@@ -50,21 +50,28 @@ def main() -> None:
         default=False,
         help="skip clearing the output directory before generating stubs",
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default=None,
+        help="directory for caching downloaded artifacts (default: ~/.cache/chaquopy-stubgen)",
+    )
 
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
+    cache_dir = Path(args.cache_dir) if args.cache_dir is not None else None
     input_paths: list[Path] = []
     for inp in args.inputs:
         if inp.endswith(".jar") or inp.endswith(".aar"):
             input_paths.append(Path(inp))
         elif is_android_shorthand(inp):
             log.info(f"Resolving Android platform {inp}...")
-            input_paths.append(resolve_android_jar(inp))
+            input_paths.append(resolve_android_jar(inp, cache_dir=cache_dir))
         elif is_maven_coordinate(inp):
             coord = parse_maven_coordinate(inp)
             log.info(f"Resolving Maven artifact {coord}...")
-            input_paths.append(resolve_maven_artifact(coord))
+            input_paths.append(resolve_maven_artifact(coord, cache_dir=cache_dir))
         elif Path(inp).is_dir():
             input_paths.append(Path(inp))
         else:
