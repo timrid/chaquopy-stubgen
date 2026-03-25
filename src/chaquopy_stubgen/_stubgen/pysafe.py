@@ -17,12 +17,17 @@ def pysafe(s: str) -> str | None:
     """
     Given an identifier name in Java, return an equivalent identifier name in
     Python that is guaranteed to not collide with the Python grammar.
+    Returns None if the name cannot be represented as a valid Python identifier
+    (e.g. names containing '$' like Kotlin compiler-internal methods).
     """
     if s.startswith("__") and s.endswith("__") and len(s) >= 4:
         # Dunder methods should not be considered safe.
         # (see system defined names in the Python documentation
         # https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers
         # )
+        return None
+    if not s.isidentifier():
+        # Names like 'addKey$kotlin_stdlib' contain characters invalid in Python.
         return None
     if is_reserved_word(s):
         return s + "_"
@@ -31,7 +36,13 @@ def pysafe(s: str) -> str | None:
 
 def pysafe_package_path(package_path: str) -> str:
     """Apply the JPype package name mangling. Segments which would clash with a python keyword are suffixed by '_'."""
-    return ".".join([pysafe(p) or "" for p in package_path.split(".")])
+    result = []
+    for p in package_path.split("."):
+        # A segment may contain '$' for inner-class names (e.g. 'Map$Entry').
+        # Apply pysafe to each '$'-separated part so keyword-clashing names are
+        # still handled correctly (e.g. 'Outer$for' becomes 'Outer$for_').
+        result.append("$".join(pysafe(part) or part for part in p.split("$")))
+    return ".".join(result)
 
 
 def to_annotated_type(
@@ -60,7 +71,10 @@ def to_annotated_type(
         if a_type_parent == "builtins":
             a_type = local_type
         elif a_type_parent == pysafe_package_path(package_name):
-            if local_type in classes_done:
+            # For inner-class references like 'MapBuilder$Itr', check whether the
+            # outermost class name is already available in the current package scope.
+            outer_name = local_type.split("$")[0]
+            if local_type in classes_done or outer_name in classes_done:
                 a_type = local_type
             elif can_be_deferred:
                 a_type = local_type
