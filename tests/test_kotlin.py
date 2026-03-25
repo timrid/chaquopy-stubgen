@@ -109,8 +109,8 @@ mb.addKey  # *1
 """
 
     # addKey$kotlin_stdlib is a Kotlin-internal method and must not appear in the stub.
-    # mypy should report it as unknown (the type: ignore suppresses the error for the
-    # test, but the marker confirms the line was actually reached without a stub parse error).
+    # mypy should report it as unknown; the marker confirms the line was actually reached
+    # without a stub parse error.
     expected_mypy_output = {
         "*1": 'error: "MapBuilder[str, int]" has no attribute "addKey"',
     }
