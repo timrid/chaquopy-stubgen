@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 ANDROID_JAR = Path(__file__).parent / "android-35.jar"
+KOTLIN_STDLIB_JAR = Path(__file__).parent / "kotlin-stdlib-2.3.20.jar"
 
 
 @pytest.fixture(scope="session")
@@ -25,7 +26,7 @@ def stub_dir() -> Generator[Path, None, None]:
         logger.debug(f"Generating stubs in {tmpdir}...")
 
         chaquopy_stubgen.convert_to_python_stubs(
-            [ANDROID_JAR], tmpdir
+            [ANDROID_JAR, KOTLIN_STDLIB_JAR], tmpdir
         )
 
         # # Rename "java-stubs" to "java"

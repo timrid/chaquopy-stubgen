@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import re
 
 import jpype
 import jpype.imports
@@ -272,7 +273,9 @@ def _generate_method_stub_asm(
             # parameters are named '$this$methodName' by the Kotlin compiler).
             if param_names and idx < len(param_names) and param_names[idx]:
                 raw_name = param_names[idx]
-                arg_name = raw_name.replace("$", "_").lstrip("_") or f"arg{idx + 1}"
+                # Replace all characters that are not valid in a Python identifier
+                # (e.g. '$this$methodName' from Kotlin, or '<set-?>' from Kotlin setters)
+                arg_name = re.sub(r"[^a-zA-Z0-9_]", "_", raw_name).lstrip("_") or f"arg{idx + 1}"
             else:
                 arg_name = f"arg{idx + 1}"
             args.append(ArgSig(name=arg_name, arg_type=pt, var_args=is_va))
