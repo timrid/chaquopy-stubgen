@@ -26,12 +26,13 @@ def stub_dir() -> Generator[Path, None, None]:
         logger.debug(f"Generating stubs in {tmpdir}...")
 
         chaquopy_stubgen.convert_to_python_stubs(
-            [ANDROID_JAR, KOTLIN_STDLIB_JAR], tmpdir
+            [ANDROID_JAR, KOTLIN_STDLIB_JAR], tmpdir, stub_only_package_marker=False
         )
 
-        # # Rename "java-stubs" to "java"
+        # Rename "java-stubs" to "java"
         # (tmpdir / "java-stubs").rename(tmpdir / "java")
-
+        # (tmpdir / "kotlin-stubs").rename(tmpdir / "kotlin")
+        
         yield tmpdir
 
 
