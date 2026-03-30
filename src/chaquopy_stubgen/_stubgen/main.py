@@ -31,6 +31,17 @@ DEFAULT_CLASSPATH = [
 ]
 
 
+def _to_stub_package_dir(package_dir: str) -> str:
+    """Convert a Java package path to a PEP 561 stub-only package path.
+
+    Appends '-stubs' to the top-level segment only, e.g.
+    ``java`` → ``java-stubs``, ``java/lang`` → ``java-stubs/lang``.
+    """
+    parts = package_dir.split("/")
+    parts[0] = parts[0] + "-stubs"
+    return "/".join(parts)
+
+
 def _worker_init(jvmpath: str | None, log_level: int) -> None:
     """Start a JVM in this worker process and register shutdown via atexit."""
     import atexit
@@ -48,6 +59,7 @@ def _process_package(
     class_files: list[str],
     package_class_data: dict[str, bytes],
     output_dir: Path,
+    stub_only_package_marker: bool = False,
 ) -> None:
     """Process one Java package and write its __init__.pyi."""
     import time
@@ -83,12 +95,14 @@ def _process_package(
         combined_code.extend(stub.type_vars)  # module-level TypeVar declarations
         combined_code.extend(stub.code)  # class definition
 
+    stub_package_dir = _to_stub_package_dir(package_dir) if stub_only_package_marker else package_dir
+
     if package_dir == "java":
         add_chaquopy_bindings_to_java_package(
-            output_dir / "java", combined_imports, combined_code
+            output_dir / stub_package_dir, combined_imports, combined_code
         )
 
-    output_file = output_dir / Path(package_dir) / "__init__.pyi"
+    output_file = output_dir / Path(stub_package_dir) / "__init__.pyi"
     output_file.parent.mkdir(parents=True, exist_ok=True)
     with output_file.open("w", encoding="utf-8") as f:
         # separate standard library imports from generated imports for readability and for isort compatibility
@@ -159,6 +173,7 @@ def convert_to_python_stubs(
     output_dir: Path,
     jvmpath: str | None = None,
     clear_output_dir: bool = True,
+    stub_only_package_marker: bool = False,
 ) -> None:
     """
     Convert one or more .jar/.aar files or directories of .class files to
@@ -236,6 +251,7 @@ def convert_to_python_stubs(
                 class_files,
                 all_class_data[package_dir],
                 output_dir,
+                stub_only_package_marker,
             )
             for package_dir, class_files in packages.items()
         ]

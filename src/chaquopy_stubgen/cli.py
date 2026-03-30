@@ -56,6 +56,12 @@ def main() -> None:
         default=None,
         help="directory for caching downloaded artifacts (default: ~/.cache/chaquopy-stubgen)",
     )
+    parser.add_argument(
+        "--stub-only-package-marker",
+        action="store_true",
+        default=False,
+        help="append '-stubs' to top-level package names to produce PEP 561 stub-only packages (default: off)",
+    )
 
     args = parser.parse_args()
 
@@ -88,6 +94,7 @@ def main() -> None:
         output_dir,
         jvmpath=args.jvmpath,
         clear_output_dir=not args.no_clean,
+        stub_only_package_marker=args.stub_only_package_marker,
     )
     elapsed = time.perf_counter() - t0
     log.info(f"Generation done in {elapsed:.1f}s.")
