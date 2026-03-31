@@ -97,14 +97,14 @@ def test_empty_list():
     assert result == []
 
 
-def test_unrelated_bases_preserve_order():
-    """Cloneable and Serializable have no inheritance relationship."""
+def test_unrelated_bases_sorted_alphabetically():
+    """Cloneable and Serializable have no inheritance relationship — alphabetical."""
     bases = _make(["java.lang.Cloneable", "java.io.Serializable"])
     result = _sort_bases_for_mro(bases, JAVA_UTIL_LOOKUP)
-    assert _names(result) == ["java.lang.Cloneable", "java.io.Serializable"]
+    assert _names(result) == ["java.io.Serializable", "java.lang.Cloneable"]
 
 
-def test_unrelated_bases_preserve_order_reversed():
+def test_unrelated_bases_sorted_alphabetically_reversed():
     bases = _make(["java.io.Serializable", "java.lang.Cloneable"])
     result = _sort_bases_for_mro(bases, JAVA_UTIL_LOOKUP)
     assert _names(result) == ["java.io.Serializable", "java.lang.Cloneable"]
@@ -173,7 +173,8 @@ def test_arraylist_api36_order():
 
 
 def test_linkedlist_api36_order():
-    """LinkedList(AbstractSequentialList, Cloneable, Deque, List, Serializable)."""
+    """LinkedList(AbstractSequentialList, Cloneable, Deque, List, Serializable).
+    Order must be deterministic regardless of bytecode order."""
     bases = _make(
         [
             "java.util.AbstractSequentialList",
@@ -191,6 +192,35 @@ def test_linkedlist_api36_order():
     assert names.index("java.util.AbstractSequentialList") < names.index(
         "java.util.Deque"
     )
+
+
+def test_linkedlist_deterministic_across_api_versions():
+    """LinkedList bases must produce the same order regardless of bytecode order.
+
+    API 35 bytecode order: ASL, List, Deque, Cloneable, Serializable
+    API 36 bytecode order: ASL, Cloneable, Deque, List, Serializable
+    """
+    api35_bases = _make(
+        [
+            "java.util.AbstractSequentialList",
+            "java.util.List",
+            "java.util.Deque",
+            "java.lang.Cloneable",
+            "java.io.Serializable",
+        ]
+    )
+    api36_bases = _make(
+        [
+            "java.util.AbstractSequentialList",
+            "java.lang.Cloneable",
+            "java.util.Deque",
+            "java.util.List",
+            "java.io.Serializable",
+        ]
+    )
+    result35 = _names(_sort_bases_for_mro(api35_bases, JAVA_UTIL_LOOKUP))
+    result36 = _names(_sort_bases_for_mro(api36_bases, JAVA_UTIL_LOOKUP))
+    assert result35 == result36
 
 
 def test_linked_hashmap_api36_order():
@@ -239,22 +269,22 @@ def test_hashtable_api36_order():
     )
     result = _sort_bases_for_mro(bases, JAVA_UTIL_LOOKUP)
     names = _names(result)
-    # Dictionary and Map are unrelated; original order is kept
+    # Dictionary and Map are unrelated; alphabetical order
     assert names.index("java.util.Dictionary") < names.index("java.util.Map")
 
 
 # -- Edge cases ----------------------------------------------------------
 
 
-def test_unknown_types_preserve_order():
-    """Types not in the lookup have no known ancestors; order is preserved."""
+def test_unknown_types_sorted_alphabetically():
+    """Types not in the lookup have no known ancestors; sorted alphabetically."""
     bases = _make(["com.unknown.Foo", "com.unknown.Bar"])
     result = _sort_bases_for_mro(bases, JAVA_UTIL_LOOKUP)
-    assert _names(result) == ["com.unknown.Foo", "com.unknown.Bar"]
+    assert _names(result) == ["com.unknown.Bar", "com.unknown.Foo"]
 
 
 def test_empty_lookup():
-    """With no inheritance info, the original order is returned."""
+    """With no inheritance info, alphabetical order is returned."""
     bases = _make(["java.util.Collection", "java.util.SequencedCollection"])
     result = _sort_bases_for_mro(bases, {})
     assert _names(result) == [

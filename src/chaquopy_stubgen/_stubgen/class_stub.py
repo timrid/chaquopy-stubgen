@@ -404,8 +404,11 @@ def _sort_bases_for_mro(
     Uses the pre-built *inheritance_lookup* (dotted class name → direct parent
     names) to count how many of the other listed bases each type transitively
     inherits from.  Types with more ancestors in the list are more derived and
-    are placed first.  A stable sort preserves the original order for types
-    that have no inheritance relationship.
+    are placed first.
+
+    Types with the same ancestor count are sorted alphabetically by name so
+    that the output is fully deterministic regardless of the bytecode order
+    in the .class file.
     """
     if len(super_type_strs) <= 1:
         return super_type_strs
@@ -428,9 +431,12 @@ def _sort_bases_for_mro(
         st.name: len(_ancestors_in_bases(st.name, set())) for st in super_type_strs
     }
 
-    # More derived (higher ancestor count) first; stable sort keeps original
-    # order for types with equal counts (i.e. no relationship between them).
-    return sorted(super_type_strs, key=lambda st: -ancestor_counts[st.name])
+    # Primary: more derived (higher ancestor count) first.
+    # Secondary: alphabetical by name for deterministic output.
+    return sorted(
+        super_type_strs,
+        key=lambda st: (-ancestor_counts[st.name], st.name),
+    )
 
 
 # ---------------------------------------------------------------------------
