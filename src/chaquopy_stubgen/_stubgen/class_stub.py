@@ -196,7 +196,9 @@ def _unwrap_primitive_array_varargs(pt: TypeStr) -> TypeStr | None:
     not a known primitive array type."""
     for elem_type, array_type_name in PARAMETER_TO_ARRAY_TYPE_MAP.items():
         if array_type_name == pt.name:
-            return elem_type if isinstance(elem_type, TypeStr) else TypeStr(str(elem_type))
+            return (
+                elem_type if isinstance(elem_type, TypeStr) else TypeStr(str(elem_type))
+            )
     return None
 
 
@@ -265,9 +267,9 @@ def _generate_method_stub_asm(
                 if pt.name == "java.chaquopy.JavaArray" and pt.type_args:
                     pt = pt.type_args[0]
                 elif pt.name in PARAMETER_TO_ARRAY_TYPE_MAP.values():
-                     # Primitive-array varargs (e.g. JavaArrayJInt): map back to
-                     # the corresponding element type.
-                     pt = _unwrap_primitive_array_varargs(pt) or pt
+                    # Primitive-array varargs (e.g. JavaArrayJInt): map back to
+                    # the corresponding element type.
+                    pt = _unwrap_primitive_array_varargs(pt) or pt
             # Use real param name from debug info, otherwise arg1/arg2/...
             # Sanitize names that contain '$' (e.g. Kotlin extension receiver
             # parameters are named '$this$methodName' by the Kotlin compiler).
@@ -275,7 +277,10 @@ def _generate_method_stub_asm(
                 raw_name = param_names[idx]
                 # Replace all characters that are not valid in a Python identifier
                 # (e.g. '$this$methodName' from Kotlin, or '<set-?>' from Kotlin setters)
-                arg_name = re.sub(r"[^a-zA-Z0-9_]", "_", raw_name).lstrip("_") or f"arg{idx + 1}"
+                arg_name = (
+                    re.sub(r"[^a-zA-Z0-9_]", "_", raw_name).lstrip("_")
+                    or f"arg{idx + 1}"
+                )
             else:
                 arg_name = f"arg{idx + 1}"
             args.append(ArgSig(name=arg_name, arg_type=pt, var_args=is_va))
@@ -359,6 +364,50 @@ def _generate_method_stub_asm(
 
 
 # ---------------------------------------------------------------------------
+# MRO sort
+# ---------------------------------------------------------------------------
+
+
+def _sort_bases_for_mro(
+    super_type_strs: list[TypeStr],
+    inheritance_lookup: dict[str, list[str]],
+) -> list[TypeStr]:
+    """
+    Re-order *super_type_strs* so that Python's C3 MRO is satisfied.
+
+    Uses the pre-built *inheritance_lookup* (dotted class name → direct parent
+    names) to count how many of the other listed bases each type transitively
+    inherits from.  Types with more ancestors in the list are more derived and
+    are placed first.  A stable sort preserves the original order for types
+    that have no inheritance relationship.
+    """
+    if len(super_type_strs) <= 1:
+        return super_type_strs
+
+    base_names = {st.name for st in super_type_strs}
+
+    def _ancestors_in_bases(name: str, seen: set[str]) -> set[str]:
+        """Return the subset of *base_names* that *name* transitively inherits from."""
+        result: set[str] = set()
+        for parent in inheritance_lookup.get(name, []):
+            if parent in seen:
+                continue
+            seen.add(parent)
+            if parent in base_names:
+                result.add(parent)
+            result |= _ancestors_in_bases(parent, seen)
+        return result
+
+    ancestor_counts = {
+        st.name: len(_ancestors_in_bases(st.name, set())) for st in super_type_strs
+    }
+
+    # More derived (higher ancestor count) first; stable sort keeps original
+    # order for types with equal counts (i.e. no relationship between them).
+    return sorted(super_type_strs, key=lambda st: -ancestor_counts[st.name])
+
+
+# ---------------------------------------------------------------------------
 # Class stub generation
 # ---------------------------------------------------------------------------
 
@@ -379,6 +428,7 @@ def convert_java_class_to_python_stub(
     classes_done: set[str] | None = None,
     classes_used: set[str] | None = None,
     parent_type_vars: list[TypeVarStr] | None = None,
+    inheritance_lookup: dict[str, list[str]] | None = None,
 ) -> JavaClassPythonStub:
     """
     Convert a Java .class file to a Python stub using ASM (no Java Reflection).
@@ -546,6 +596,11 @@ def convert_java_class_to_python_stub(
         log.warning(f"Could not parse supers for {class_name_dotted}: {e}")
         super_type_strs = []
 
+    # Ensure Python's C3 MRO is satisfied: if type B is a supertype of type A
+    # among the base classes, A must come before B.
+    if inheritance_lookup:
+        super_type_strs = _sort_bases_for_mro(super_type_strs, inheritance_lookup)
+
     super_type_annotations: list[str] = []
     for st in super_type_strs:
         # Drop java.lang.Object when it would not be the sole supertype — all
@@ -620,6 +675,7 @@ def convert_java_class_to_python_stub(
                     classes_done=ic_done,
                     classes_used=classes_used,
                     parent_type_vars=ic_parent_tvars,
+                    inheritance_lookup=inheritance_lookup,
                 )
                 nested_done |= ic_done
             except Exception as e:

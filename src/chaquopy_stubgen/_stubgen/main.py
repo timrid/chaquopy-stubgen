@@ -54,6 +54,33 @@ def _worker_init(jvmpath: str | None, log_level: int) -> None:
     atexit.register(jpype.shutdownJVM)
 
 
+def _build_inheritance_lookup(
+    package_class_data: dict[str, bytes],
+) -> dict[str, list[str]]:
+    """Build a map from dotted class name to its direct supertype names.
+
+    Uses the lightweight ``ClassReader`` API (no ``ClassNode``) so that
+    the inheritance graph is available for MRO sorting without a second
+    bytecode pass inside the stub generator.
+    """
+    import jpype
+    from org.objectweb.asm import ClassReader  # type: ignore
+
+    lookup: dict[str, list[str]] = {}
+    for jvm_name, data in package_class_data.items():
+        try:
+            cr = ClassReader(jpype.JArray(jpype.JByte)(data))  # type: ignore
+            parents: list[str] = []
+            if cr.getSuperName():
+                parents.append(str(cr.getSuperName()).replace("/", "."))
+            for iface in cr.getInterfaces():
+                parents.append(str(iface).replace("/", "."))
+            lookup[jvm_name.replace("/", ".")] = parents
+        except Exception:
+            pass
+    return lookup
+
+
 def _process_package(
     package_dir: str,
     class_files: list[str],
@@ -79,6 +106,8 @@ def _process_package(
     combined_imports: set[str] = set()
     combined_code: list[str] = []
 
+    inheritance_lookup = _build_inheritance_lookup(package_class_data)
+
     for class_file in sorted(top_level_files):
         try:
             stub = convert_java_class_to_python_stub(
@@ -87,6 +116,7 @@ def _process_package(
                 all_class_data=package_class_data,
                 classes_done=classes_done,
                 classes_used=classes_used,
+                inheritance_lookup=inheritance_lookup,
             )
         except Exception as e:
             log.warning(f"Skipping {class_file}: {e}")
@@ -95,7 +125,9 @@ def _process_package(
         combined_code.extend(stub.type_vars)  # module-level TypeVar declarations
         combined_code.extend(stub.code)  # class definition
 
-    stub_package_dir = _to_stub_package_dir(package_dir) if stub_only_package_marker else package_dir
+    stub_package_dir = (
+        _to_stub_package_dir(package_dir) if stub_only_package_marker else package_dir
+    )
 
     if package_dir == "java":
         add_chaquopy_bindings_to_java_package(
