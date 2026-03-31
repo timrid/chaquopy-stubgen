@@ -39,6 +39,32 @@ from chaquopy_stubgen._stubgen.whitelists import METHOD_CAN_RETURN_NONE
 log = logging.getLogger(__name__)
 
 
+def build_inheritance_lookup(
+    package_class_data: dict[str, bytes],
+) -> dict[str, list[str]]:
+    """Build a map from dotted class name to its direct supertype names.
+
+    Uses the lightweight ``ClassReader`` API (no ``ClassNode``) so that
+    the inheritance graph is available for MRO sorting without a second
+    bytecode pass inside the stub generator.
+    """
+    from org.objectweb.asm import ClassReader  # type: ignore
+
+    lookup: dict[str, list[str]] = {}
+    for jvm_name, data in package_class_data.items():
+        try:
+            cr = ClassReader(jpype.JArray(jpype.JByte)(data))  # type: ignore
+            parents: list[str] = []
+            if cr.getSuperName():
+                parents.append(str(cr.getSuperName()).replace("/", "."))
+            for iface in cr.getInterfaces():
+                parents.append(str(iface).replace("/", "."))
+            lookup[jvm_name.replace("/", ".")] = parents
+        except Exception:
+            pass
+    return lookup
+
+
 # ---------------------------------------------------------------------------
 # Whitelist helpers
 # ---------------------------------------------------------------------------

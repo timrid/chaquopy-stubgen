@@ -20,7 +20,10 @@ from chaquopy_stubgen._log import configure_logging
 from chaquopy_stubgen._stubgen.chaquopy_bindings import (
     add_chaquopy_bindings_to_java_package,
 )
-from chaquopy_stubgen._stubgen.class_stub import convert_java_class_to_python_stub
+from chaquopy_stubgen._stubgen.class_stub import (
+    build_inheritance_lookup,
+    convert_java_class_to_python_stub,
+)
 
 log = logging.getLogger(__name__)
 
@@ -54,33 +57,6 @@ def _worker_init(jvmpath: str | None, log_level: int) -> None:
     atexit.register(jpype.shutdownJVM)
 
 
-def _build_inheritance_lookup(
-    package_class_data: dict[str, bytes],
-) -> dict[str, list[str]]:
-    """Build a map from dotted class name to its direct supertype names.
-
-    Uses the lightweight ``ClassReader`` API (no ``ClassNode``) so that
-    the inheritance graph is available for MRO sorting without a second
-    bytecode pass inside the stub generator.
-    """
-    import jpype
-    from org.objectweb.asm import ClassReader  # type: ignore
-
-    lookup: dict[str, list[str]] = {}
-    for jvm_name, data in package_class_data.items():
-        try:
-            cr = ClassReader(jpype.JArray(jpype.JByte)(data))  # type: ignore
-            parents: list[str] = []
-            if cr.getSuperName():
-                parents.append(str(cr.getSuperName()).replace("/", "."))
-            for iface in cr.getInterfaces():
-                parents.append(str(iface).replace("/", "."))
-            lookup[jvm_name.replace("/", ".")] = parents
-        except Exception:
-            pass
-    return lookup
-
-
 def _process_package(
     package_dir: str,
     class_files: list[str],
@@ -106,7 +82,7 @@ def _process_package(
     combined_imports: set[str] = set()
     combined_code: list[str] = []
 
-    inheritance_lookup = _build_inheritance_lookup(package_class_data)
+    inheritance_lookup = build_inheritance_lookup(package_class_data)
 
     for class_file in sorted(top_level_files):
         try:
