@@ -551,6 +551,8 @@ def convert_java_class_to_python_stub(
             ann = f"typing.ClassVar[{ann}]"
         fields_output.append(f"{safe_field_name}: {ann} = ...")
 
+    fields_output.sort()
+
     # ---- Constructors ----
     constructors_output: list[str] = []
     ctors = [
