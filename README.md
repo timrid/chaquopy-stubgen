@@ -3,6 +3,9 @@ This tool is a Python type stub generator from Java classes. It is optimized for
 
 The generated stubs can be used with Python 3.10 or higher.
 
+> **⚠️ Disclaimer:** This is **not** an official tool of the [Chaquopy](https://github.com/chaquo/chaquopy) project. It is an independent, community-maintained project.
+
+
 # CLI Usage
 Example call `uv run -m chaquopy_stubgen "$ANDROID_HOME/platforms/android-35/android.jar"`
 
