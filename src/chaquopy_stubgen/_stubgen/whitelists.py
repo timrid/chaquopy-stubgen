@@ -943,6 +943,8 @@ METHOD_CAN_RETURN_NONE = {
 
     # android.bluetooth
     # BluetoothAdapter
+    "android.bluetooth.BluetoothAdapter.getBluetoothLeAdvertiser()",
+    "android.bluetooth.BluetoothAdapter.getBluetoothLeScanner()",
     "android.bluetooth.BluetoothAdapter.getDefaultAdapter()",
     "android.bluetooth.BluetoothAdapter.getDiscoverableTimeout()",
     "android.bluetooth.BluetoothAdapter.getName()",
