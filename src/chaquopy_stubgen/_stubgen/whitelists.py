@@ -956,6 +956,11 @@ METHOD_CAN_RETURN_NONE = {
     "android.bluetooth.BluetoothCodecStatus.getCodecConfig()",
 
     # BluetoothDevice
+    "android.bluetooth.BluetoothDevice.connectGatt(android.content.Context, boolean, android.bluetooth.BluetoothGattCallback)",
+    "android.bluetooth.BluetoothDevice.connectGatt(android.content.Context, boolean, android.bluetooth.BluetoothGattCallback, int)",
+    "android.bluetooth.BluetoothDevice.connectGatt(android.content.Context, boolean, android.bluetooth.BluetoothGattCallback, int, int)",
+    "android.bluetooth.BluetoothDevice.connectGatt(android.content.Context, boolean, android.bluetooth.BluetoothGattCallback, int, int, android.os.Handler)",
+    "android.bluetooth.BluetoothDevice.connectGatt(android.bluetooth.BluetoothGattConnectionSettings, java.util.concurrent.Executor, android.bluetooth.BluetoothGattCallback)",
     "android.bluetooth.BluetoothDevice.getAlias()",
     "android.bluetooth.BluetoothDevice.getBluetoothClass()",
     "android.bluetooth.BluetoothDevice.getName()",
